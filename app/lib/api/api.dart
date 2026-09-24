@@ -87,6 +87,11 @@ class ApiClient {
     return _session(data as Map<String, dynamic>);
   }
 
+  Future<Map<String, dynamic>> demo() async {
+    final data = await post('/auth/demo');
+    return _session(data as Map<String, dynamic>);
+  }
+
   Future<void> logout() async {
     final stored = kIsWeb ? null : await _store.read();
     try {

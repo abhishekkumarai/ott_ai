@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'auth/auth.dart';
+import 'auth/demo_screen.dart';
 import 'auth/login_screen.dart';
 import 'chat/chat_screen.dart';
 import 'theme.dart';
@@ -26,17 +27,22 @@ final routerProvider = Provider<GoRouter>((ref) {
     refreshListenable: listenable,
     redirect: (context, state) {
       final status = ref.read(authProvider).status;
-      final atLogin = state.matchedLocation == '/login';
+      final loc = state.matchedLocation;
+      final atLogin = loc == '/login';
+      // /demo is the landing page's "Try the demo" link: it starts a demo session
+      // unless the visitor is already signed in.
+      if (loc == '/demo') return status == AuthStatus.signedIn ? '/' : null;
       return switch (status) {
         AuthStatus.unknown => atLogin ? null : '/splash',
         AuthStatus.signedOut => atLogin ? null : '/login',
-        AuthStatus.signedIn => (atLogin || state.matchedLocation == '/splash') ? '/' : null,
+        AuthStatus.signedIn => (atLogin || loc == '/splash') ? '/' : null,
       };
     },
     routes: [
       GoRoute(path: '/', builder: (_, _) => const ChatScreen()),
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/splash', builder: (_, _) => const _Splash()),
+      GoRoute(path: '/demo', builder: (_, _) => const DemoScreen()),
     ],
   );
 });

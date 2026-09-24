@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.config import get_settings
@@ -22,6 +22,8 @@ from app.security import (
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 COOKIE = "ott_refresh"
 COOKIE_PATH = "/api/auth"
+DEMO_TTL = timedelta(hours=24)
+DEMO_HOURLY_CAP = 300  # global ceiling on demo sessions created per hour
 
 
 class Credentials(BaseModel):
@@ -37,6 +39,11 @@ class UserOut(BaseModel):
     id: uuid.UUID
     email: str
     is_admin: bool
+    is_demo: bool = False
+
+    @classmethod
+    def of(cls, u: User) -> "UserOut":
+        return cls(id=u.id, email=u.email, is_admin=u.is_admin, is_demo=u.is_demo)
 
 
 class TokenOut(BaseModel):
@@ -54,18 +61,21 @@ async def _issue(
 ) -> TokenOut:
     s = get_settings()
     raw, digest = new_refresh_token()
+    expires = datetime.now(UTC) + timedelta(days=s.refresh_token_days)
+    if user.is_demo:  # a demo session never outlives the demo account
+        expires = min(expires, (user.created_at or datetime.now(UTC)) + DEMO_TTL)
     db.add(
         RefreshToken(
             user_id=user.id,
             token_hash=digest,
             family_id=family or uuid.uuid4(),
-            expires_at=datetime.now(UTC) + timedelta(days=s.refresh_token_days),
+            expires_at=expires,
         )
     )
     await db.commit()
     out = TokenOut(
-        access_token=create_access_token(user.id, user.is_admin),
-        user=UserOut(id=user.id, email=user.email, is_admin=user.is_admin),
+        access_token=create_access_token(user.id, user.is_admin and not user.is_demo),
+        user=UserOut.of(user),
     )
     if client == "native":
         out.refresh_token = raw
@@ -73,7 +83,7 @@ async def _issue(
         response.set_cookie(
             COOKIE,
             raw,
-            max_age=s.refresh_token_days * 86400,
+            max_age=int((expires - datetime.now(UTC)).total_seconds()),
             path=COOKIE_PATH,
             httponly=True,
             secure=True,
@@ -96,6 +106,36 @@ async def register(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered") from None
+    return await _issue(db, user, response, x_client)
+
+
+@router.post("/demo", response_model=TokenOut, status_code=201)
+@limiter.limit("5/minute;30/day")
+async def demo(request: Request, db: DB, response: Response, x_client: ClientHeader = None):
+    """Throwaway account so visitors can try everything without signing up.
+
+    Demo users are never admins, cannot log in with a password, and are deleted
+    (with their chats and history) 24 hours after creation.
+    """
+    now = datetime.now(UTC)
+    await db.execute(delete(User).where(User.is_demo.is_(True), User.created_at < now - DEMO_TTL))
+    recent = await db.scalar(
+        select(func.count()).select_from(User).where(
+            User.is_demo.is_(True), User.created_at > now - timedelta(hours=1)
+        )
+    )
+    if (recent or 0) >= DEMO_HOURLY_CAP:
+        await db.commit()
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Demo is busy, try again later")
+    user = User(
+        email=f"demo-{uuid.uuid4().hex[:12]}@demo.invalid",
+        # random, never revealed: demo accounts can only be used through their session
+        password_hash=hash_password(new_refresh_token()[0]),
+        is_demo=True,
+        created_at=now,
+    )
+    db.add(user)
+    await db.flush()
     return await _issue(db, user, response, x_client)
 
 
@@ -185,4 +225,4 @@ async def logout(
 
 @router.get("/me", response_model=UserOut)
 async def me(user: CurrentUser):
-    return UserOut(id=user.id, email=user.email, is_admin=user.is_admin)
+    return UserOut.of(user)

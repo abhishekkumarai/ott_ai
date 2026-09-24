@@ -191,3 +191,41 @@ async def test_body_size_limit(client):
     assert r.status_code == 413
 
 
+
+
+# ---------- demo ----------
+
+async def test_demo_session_can_chat_but_not_admin(client):
+    r = await client.post("/api/auth/demo")
+    assert r.status_code == 201
+    body = r.json()
+    assert body["user"]["is_demo"] is True and body["user"]["is_admin"] is False
+    assert body["user"]["email"].endswith("@demo.invalid")
+    assert "ott_refresh" in client.cookies
+    h = auth(body["access_token"])
+    assert (await client.post("/api/chat", json={"message": "hello"}, headers=h)).status_code == 200
+    assert (await client.get("/api/admin/videos", headers=h)).status_code == 403
+    # the session refreshes like a normal one
+    assert (await client.post("/api/auth/refresh")).status_code == 200
+
+
+async def test_demo_accounts_expire_and_are_rate_limited(client):
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import select, update
+
+    from app.db import SessionLocal
+    from app.models import User
+
+    old = (await client.post("/api/auth/demo")).json()["user"]["id"]
+    async with SessionLocal() as db:
+        await db.execute(
+            update(User).where(User.id == old).values(created_at=datetime.now(UTC) - timedelta(hours=25))
+        )
+        await db.commit()
+    await client.post("/api/auth/demo")  # creating a new demo sweeps expired ones
+    async with SessionLocal() as db:
+        assert await db.scalar(select(User.id).where(User.id == old)) is None
+    for _ in range(3):
+        await client.post("/api/auth/demo")
+    assert (await client.post("/api/auth/demo")).status_code == 429

@@ -44,7 +44,7 @@ async def current_user(
 
 
 async def admin_user(user: Annotated[User, Depends(current_user)]) -> User:
-    if not user.is_admin:
+    if not user.is_admin or user.is_demo:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin only")
     return user
 

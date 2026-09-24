@@ -64,6 +64,13 @@ class _TopBar extends ConsumerWidget {
           child: Row(
             children: [
               const Logo(),
+              if (ref.watch(authProvider.select((a) => a.user?.isDemo ?? false))) ...[
+                const SizedBox(width: 10),
+                ShadTooltip(
+                  builder: (_) => const Text('Temporary demo session, deleted after 24 hours'),
+                  child: const ShadBadge.outline(child: Text('Demo')),
+                ),
+              ],
               const Spacer(),
               if (s.models.length > 1)
                 ConstrainedBox(

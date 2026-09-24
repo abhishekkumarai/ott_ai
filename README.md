@@ -38,7 +38,12 @@ docker compose exec api python -m app.cli seed                    # load seed/ca
 docker compose exec api python -m app.cli create-admin you@example.com   # admin page: /admin/
 ```
 
-Routes: `/` landing · `/app/` Flutter app · `/admin/` catalog admin · `/api/*` API.
+Routes: `/` landing · `/app/` Flutter app · `/app/#/demo` instant demo · `/admin/` catalog admin · `/api/*` API.
+
+**Try the demo** (landing page and sign-in screen) calls `POST /api/auth/demo`, which creates a throwaway account
+(`demo-…@demo.invalid`, random unusable password, never admin). Its session and all its chats are deleted 24 h after
+creation (expired demo users are swept whenever a new demo starts). Limits: 5/min and 30/day per IP,
+300 new demo sessions per hour overall.
 
 ### Native builds
 

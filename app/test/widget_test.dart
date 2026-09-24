@@ -5,7 +5,9 @@ import 'package:reel/api/api.dart';
 import 'package:reel/auth/auth.dart';
 import 'package:reel/auth/login_screen.dart';
 import 'package:reel/chat/chat_controller.dart';
+import 'package:reel/chat/chat_screen.dart';
 import 'package:reel/chat/models.dart';
+import 'package:reel/main.dart';
 import 'package:reel/player/player_handle.dart';
 import 'package:reel/theme.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -15,8 +17,21 @@ class FakeApi extends ApiClient {
   final sent = <Map<String, dynamic>>[];
   Map<String, dynamic> Function(Map<String, dynamic> body)? onChat;
 
+  FakeApi({this.session});
+  final Map<String, dynamic>? session;
+  int demoCalls = 0;
+
   @override
-  Future<Map<String, dynamic>?> refresh() async => null;
+  Future<Map<String, dynamic>?> refresh() async => session;
+
+  @override
+  Future<Map<String, dynamic>> demo() async {
+    demoCalls++;
+    return {
+      'access_token': 't',
+      'user': {'id': 'u1', 'email': 'demo-x@demo.invalid', 'is_admin': false, 'is_demo': true},
+    };
+  }
 
   @override
   Future<dynamic> get(String path, [Map<String, dynamic>? query]) async {
@@ -181,5 +196,57 @@ void main() {
         expect(tester.takeException(), isNull);
       });
     }
+  });
+
+  testWidgets('Try the demo signs in with a demo user', (tester) async {
+    final api = FakeApi();
+    final container = ProviderContainer(overrides: [apiProvider.overrideWithValue(api)]);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: ShadApp(theme: lightTheme(), home: const LoginScreen()),
+    ));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Try the demo'));
+    await tester.tap(find.text('Try the demo'));
+    await tester.pumpAndSettle();
+    expect(api.demoCalls, 1);
+    final auth = container.read(authProvider);
+    expect(auth.status, AuthStatus.signedIn);
+    expect(auth.user!.isDemo, isTrue);
+  });
+
+  group('/demo link', () {
+    Future<(ProviderContainer, FakeApi)> boot(WidgetTester tester, {Map<String, dynamic>? session}) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final api = FakeApi(session: session);
+      final container = ProviderContainer(overrides: [apiProvider.overrideWithValue(api)]);
+      addTearDown(container.dispose);
+      await tester.pumpWidget(UncontrolledProviderScope(container: container, child: const ReelApp()));
+      await tester.pumpAndSettle();
+      container.read(routerProvider).go('/demo');
+      await tester.pumpAndSettle();
+      return (container, api);
+    }
+
+    testWidgets('signed-out visitor gets a demo session and lands in the chat', (tester) async {
+      final (c, api) = await boot(tester);
+      expect(api.demoCalls, 1);
+      expect(c.read(authProvider).user!.isDemo, isTrue);
+      expect(find.byType(ChatScreen), findsOneWidget);
+      expect(find.text('Demo'), findsOneWidget);
+    });
+
+    testWidgets('already signed-in user goes straight to the chat, no demo created', (tester) async {
+      final (c, api) = await boot(tester, session: {
+        'access_token': 't',
+        'user': {'id': 'u2', 'email': 'me@example.com', 'is_admin': false, 'is_demo': false},
+      });
+      expect(api.demoCalls, 0);
+      expect(find.byType(ChatScreen), findsOneWidget);
+      expect(find.text('Demo'), findsNothing);
+    });
   });
 }

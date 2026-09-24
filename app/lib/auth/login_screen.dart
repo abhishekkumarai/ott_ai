@@ -55,6 +55,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  Future<void> _demo() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref.read(authProvider.notifier).startDemo();
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = ShadTheme.of(context);
@@ -126,6 +140,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 _error = null;
                               }),
                       child: Text(_register ? 'Sign in instead' : 'Create an account'),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(child: Divider(color: cs.border, height: 1)),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Text('or', style: theme.textTheme.muted.copyWith(fontSize: 12)),
+                        ),
+                        Expanded(child: Divider(color: cs.border, height: 1)),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    ShadButton.outline(
+                      onPressed: _busy ? null : _demo,
+                      leading: const Icon(LucideIcons.play, size: 16),
+                      child: const Text('Try the demo'),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'No sign-up. A temporary session that is deleted after 24 hours.',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.muted.copyWith(fontSize: 12),
                     ),
                   ],
                 ),

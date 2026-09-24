@@ -4,6 +4,7 @@
 FROM ghcr.io/cirruslabs/flutter:3.44.0 AS flutter
 WORKDIR /build/app
 COPY app/pubspec.yaml app/pubspec.lock ./
+COPY app/third_party ./third_party
 RUN flutter pub get
 COPY app/ ./
 RUN flutter build web --release --base-href /app/ --no-web-resources-cdn
