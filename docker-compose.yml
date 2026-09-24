@@ -1,0 +1,33 @@
+# Postgres 16 and Ollama run on the host; containers reach them via host.docker.internal.
+# Values come from the generated .env (python backend/scripts/make_env.py).
+services:
+  api:
+    build: ./backend
+    env_file: .env
+    environment:
+      OTT_ENV: prod
+      OTT_DATABASE_URL: ${OTT_DOCKER_DATABASE_URL:?run backend/scripts/make_env.py}
+      OTT_OLLAMA_URL: ${OTT_DOCKER_OLLAMA_URL:-http://host.docker.internal:11434}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    # no published port: only nginx talks to the API
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    ports:
+      - "${OTT_WEB_PORT:-8088}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    read_only: true
+    tmpfs: [/tmp, /var/cache/nginx]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped

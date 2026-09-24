@@ -1,0 +1,5 @@
+html, body { margin: 0; background: #fff; }
+@media (prefers-color-scheme: dark) { html, body { background: #09090b; } }
+#loader { position: fixed; inset: 0; margin: auto; width: 20px; height: 20px; border-radius: 50%;
+  border: 2px solid #a1a1aa; border-top-color: transparent; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }

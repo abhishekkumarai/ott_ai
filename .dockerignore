@@ -1,0 +1,11 @@
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/node_modules
+**/.dart_tool
+app/build
+app/android/.gradle
+app/windows/flutter/ephemeral
+web/dist
+.env
+.git

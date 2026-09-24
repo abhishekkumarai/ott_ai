@@ -1,0 +1,11 @@
+{
+  "name": "ott-ai-web",
+  "private": true,
+  "scripts": {
+    "build": "tailwindcss -i src/app.css -o dist/assets/app.css --minify"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4",
+    "tailwindcss": "^4"
+  }
+}

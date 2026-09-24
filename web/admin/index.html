@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Reel · Catalog admin</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <script src="/admin/admin.js" defer></script>
+</head>
+<body class="min-h-dvh">
+  <header class="border-b">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+      <a href="/" class="font-semibold tracking-tight">Reel <span class="font-normal text-muted-foreground">/ catalog</span></a>
+      <div class="flex items-center gap-3">
+        <span id="who" class="hidden text-sm text-muted-foreground sm:inline"></span>
+        <button id="logout" class="btn btn-ghost btn-sm hidden" type="button">Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Sign in -->
+  <main id="login-view" class="mx-auto mt-24 hidden w-full max-w-sm px-5">
+    <form id="login-form" class="card space-y-4 p-6" novalidate>
+      <div>
+        <h1 class="text-lg font-semibold">Sign in</h1>
+        <p class="text-sm text-muted-foreground">Admin accounts only.</p>
+      </div>
+      <div class="space-y-2">
+        <label class="label" for="email">Email</label>
+        <input class="input" id="email" type="email" autocomplete="username" required>
+      </div>
+      <div class="space-y-2">
+        <label class="label" for="password">Password</label>
+        <input class="input" id="password" type="password" autocomplete="current-password" required>
+      </div>
+      <p id="login-error" class="hidden text-sm text-destructive" role="alert"></p>
+      <button class="btn btn-primary w-full" type="submit">Sign in</button>
+    </form>
+  </main>
+
+  <!-- Catalog -->
+  <main id="catalog-view" class="mx-auto hidden max-w-6xl px-5 py-8">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold tracking-tight">Video catalog</h1>
+        <p id="count" class="text-sm text-muted-foreground"></p>
+      </div>
+      <div class="flex gap-2">
+        <input id="q" class="input w-full sm:w-64" type="search" placeholder="Search title, topic or ID" maxlength="100">
+        <select id="source" class="input w-32" aria-label="Source">
+          <option value="">All</option>
+          <option value="curated">Curated</option>
+          <option value="youtube">From search</option>
+        </select>
+      </div>
+    </div>
+
+    <form id="add-form" class="card mt-6 grid gap-3 p-4 sm:grid-cols-[1.2fr_1fr_1.5fr_auto] sm:items-end" novalidate>
+      <div class="space-y-1.5">
+        <label class="label" for="add-id">YouTube URL or ID</label>
+        <input class="input" id="add-id" required placeholder="https://youtu.be/…" maxlength="200">
+      </div>
+      <div class="space-y-1.5">
+        <label class="label" for="add-topic">Topic</label>
+        <input class="input" id="add-topic" required placeholder="science" maxlength="100">
+      </div>
+      <div class="space-y-1.5">
+        <label class="label" for="add-tags">Tags <span class="font-normal text-muted-foreground">(comma separated)</span></label>
+        <input class="input" id="add-tags" placeholder="space, physics" maxlength="600">
+      </div>
+      <button class="btn btn-primary" type="submit">Add video</button>
+      <p id="add-msg" class="text-sm sm:col-span-4" role="status"></p>
+    </form>
+
+    <div class="mt-6 overflow-x-auto rounded-lg border">
+      <table class="w-full min-w-[720px] text-left text-sm">
+        <thead class="border-b bg-muted/50 text-muted-foreground">
+          <tr>
+            <th class="w-28 px-3 py-2.5 font-medium"></th>
+            <th class="px-3 py-2.5 font-medium">Title</th>
+            <th class="px-3 py-2.5 font-medium">Topic</th>
+            <th class="px-3 py-2.5 font-medium">Tags</th>
+            <th class="px-3 py-2.5 font-medium">Length</th>
+            <th class="px-3 py-2.5 font-medium">Source</th>
+            <th class="px-3 py-2.5"></th>
+          </tr>
+        </thead>
+        <tbody id="rows" class="divide-y"></tbody>
+      </table>
+    </div>
+    <div class="mt-4 flex items-center justify-end gap-2">
+      <button id="prev" class="btn btn-outline btn-sm" type="button">Previous</button>
+      <button id="next" class="btn btn-outline btn-sm" type="button">Next</button>
+    </div>
+  </main>
+
+  <template id="row-tpl">
+    <tr>
+      <td class="px-3 py-2"><img class="aspect-video w-24 rounded object-cover" alt="" loading="lazy" referrerpolicy="no-referrer"></td>
+      <td class="px-3 py-2"><div data-f="title" class="line-clamp-2 font-medium"></div><div data-f="channel" class="text-xs text-muted-foreground"></div></td>
+      <td class="px-3 py-2"><input data-f="topic" class="input h-8" maxlength="100"></td>
+      <td class="px-3 py-2"><input data-f="tags" class="input h-8" maxlength="600"></td>
+      <td data-f="dur" class="px-3 py-2 font-mono text-xs"></td>
+      <td class="px-3 py-2"><span data-f="source" class="badge"></span></td>
+      <td class="whitespace-nowrap px-3 py-2 text-right">
+        <button data-a="save" class="btn btn-outline btn-sm" type="button">Save</button>
+        <button data-a="del" class="btn btn-ghost btn-sm text-destructive" type="button">Delete</button>
+      </td>
+    </tr>
+  </template>
+</body>
+</html>

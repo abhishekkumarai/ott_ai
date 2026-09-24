@@ -58,7 +58,7 @@ async def _hardening(request: Request, call_next):
 
 origins = list(settings.cors_origins)
 if not settings.is_prod:
-    origins.append("http://localhost:8080")
+    origins.append("http://localhost:8088")
 if origins:
     app.add_middleware(
         CORSMiddleware,

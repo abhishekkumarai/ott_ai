@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reel — ask for a topic, watch the video</title>
+  <meta name="description" content="A chat that finds free YouTube videos on any topic and plays them right in the conversation. Control playback by typing or speaking.">
+  <link rel="preload" href="/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+</head>
+<body class="min-h-dvh">
+  <header class="mx-auto flex max-w-6xl items-center justify-between px-5 py-5">
+    <a href="/" class="flex items-center gap-2 font-semibold tracking-tight">
+      <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 9l5 3-5 3z" fill="var(--accent)"/></svg>
+      Reel
+    </a>
+    <nav class="flex items-center gap-2">
+      <a class="btn btn-ghost btn-sm" href="#how">How it works</a>
+      <a class="btn btn-primary btn-sm" href="/app/">Open app</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="mx-auto grid max-w-6xl gap-12 px-5 pb-20 pt-10 md:grid-cols-[1.1fr_1fr] md:items-center md:pt-20">
+      <div>
+        <p class="mb-4 font-mono text-xs uppercase tracking-widest text-muted-foreground">Chat · Watch · Control</p>
+        <h1 class="text-4xl font-semibold leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">
+          Ask about anything.<br>Watch it without leaving the chat.
+        </h1>
+        <p class="mt-6 max-w-lg text-lg text-muted-foreground">
+          Reel finds a free YouTube video for your question and plays it in place.
+          Say <span class="text-foreground">“forward 25 seconds”</span> to skip ahead,
+          <span class="text-foreground">“stop”</span> to get back to the conversation.
+        </p>
+        <div class="mt-8 flex flex-wrap gap-3">
+          <a class="btn btn-primary h-10 px-5" href="/app/">Start watching</a>
+          <a class="btn btn-outline h-10 px-5" href="#commands">See the commands</a>
+        </div>
+      </div>
+
+      <!-- Product sketch built from real markup, not a stock image -->
+      <div class="card overflow-hidden shadow-sm" aria-hidden="true">
+        <div class="flex items-center gap-1.5 border-b px-4 py-3">
+          <span class="size-2.5 rounded-full bg-muted-foreground/30"></span>
+          <span class="size-2.5 rounded-full bg-muted-foreground/30"></span>
+          <span class="size-2.5 rounded-full bg-muted-foreground/30"></span>
+        </div>
+        <div class="space-y-3 p-4 text-sm">
+          <div class="ml-auto w-fit max-w-[80%] rounded-lg bg-primary px-3 py-2 text-primary-foreground">show me how sourdough starter works</div>
+          <div class="w-fit max-w-[85%] rounded-lg bg-muted px-3 py-2">Here’s a clear walkthrough of feeding and timing a starter.</div>
+          <div class="grid grid-cols-[1fr_7rem] gap-3">
+            <div class="relative aspect-video rounded-md bg-foreground/90">
+              <div class="absolute inset-x-3 bottom-3 h-1 rounded bg-background/30"><div class="h-1 w-2/5 rounded bg-accent"></div></div>
+              <span class="absolute left-3 top-3 font-mono text-[10px] text-background/80">02:15 → 02:40</span>
+            </div>
+            <div class="space-y-2">
+              <div class="aspect-video rounded bg-muted"></div>
+              <div class="aspect-video rounded bg-muted"></div>
+              <div class="aspect-video rounded bg-muted"></div>
+            </div>
+          </div>
+          <div class="ml-auto w-fit rounded-lg bg-primary px-3 py-2 text-primary-foreground">forward 25 sec</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="how" class="border-t">
+      <div class="mx-auto grid max-w-6xl gap-10 px-5 py-16 md:grid-cols-3">
+        <div>
+          <p class="font-mono text-xs text-muted-foreground">01</p>
+          <h2 class="mt-2 font-semibold">Ask in plain words</h2>
+          <p class="mt-2 text-sm text-muted-foreground">A local language model picks out the topic. Nothing you type is sent to a paid AI service.</p>
+        </div>
+        <div>
+          <p class="font-mono text-xs text-muted-foreground">02</p>
+          <h2 class="mt-2 font-semibold">Watch in place</h2>
+          <p class="mt-2 text-sm text-muted-foreground">The video opens over the chat, with related picks beside it. Works on phones, tablets and desktops.</p>
+        </div>
+        <div>
+          <p class="font-mono text-xs text-muted-foreground">03</p>
+          <h2 class="mt-2 font-semibold">Steer with your voice</h2>
+          <p class="mt-2 text-sm text-muted-foreground">Hold the mic and say what you want. Or type it. Or use the keyboard.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="commands" class="border-t bg-muted/40">
+      <div class="mx-auto max-w-6xl px-5 py-16">
+        <h2 class="text-2xl font-semibold tracking-tight">Commands while a video plays</h2>
+        <div class="mt-8 overflow-hidden rounded-lg border bg-background">
+          <table class="w-full text-left text-sm">
+            <thead class="border-b bg-muted/50 text-muted-foreground">
+              <tr><th class="px-4 py-2.5 font-medium">Say or type</th><th class="px-4 py-2.5 font-medium">What happens</th><th class="hidden px-4 py-2.5 font-medium sm:table-cell">Key</th></tr>
+            </thead>
+            <tbody class="divide-y">
+              <tr><td class="px-4 py-3">forward · forward 25 sec · skip ahead a minute</td><td class="px-4 py-3 text-muted-foreground">Jumps ahead (25 s by default) and keeps playing</td><td class="hidden px-4 py-3 sm:table-cell"><span class="kbd">→</span></td></tr>
+              <tr><td class="px-4 py-3">back 10 · rewind</td><td class="px-4 py-3 text-muted-foreground">Jumps back</td><td class="hidden px-4 py-3 sm:table-cell"><span class="kbd">←</span></td></tr>
+              <tr><td class="px-4 py-3">pause · play</td><td class="px-4 py-3 text-muted-foreground">Pauses or resumes</td><td class="hidden px-4 py-3 sm:table-cell"><span class="kbd">Space</span></td></tr>
+              <tr><td class="px-4 py-3">next</td><td class="px-4 py-3 text-muted-foreground">Plays the top recommendation</td><td class="hidden px-4 py-3 sm:table-cell"><span class="kbd">N</span></td></tr>
+              <tr><td class="px-4 py-3">stop</td><td class="px-4 py-3 text-muted-foreground">Closes the video and returns to the chat</td><td class="hidden px-4 py-3 sm:table-cell"><span class="kbd">Esc</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t">
+    <div class="mx-auto flex max-w-6xl flex-col gap-2 px-5 py-8 text-sm text-muted-foreground sm:flex-row sm:justify-between">
+      <p>Videos are embedded from YouTube and remain the property of their creators.</p>
+      <a class="hover:text-foreground" href="/admin/">Admin</a>
+    </div>
+  </footer>
+</body>
+</html>

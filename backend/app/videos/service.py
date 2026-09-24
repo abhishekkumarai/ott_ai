@@ -6,7 +6,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, literal_column, select
+from sqlalchemy import case, func, literal_column, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +22,7 @@ RRF_K = 60
 SEMANTIC_MIN = 0.62
 CACHE_TTL = timedelta(days=7)
 MIN_DURATION_S = 60
+SAME_TOPIC_BONUS = 0.06
 
 
 @dataclass
@@ -188,7 +189,10 @@ async def recommendations(
         exclude |= set(recent)
     out: list[Video] = []
     if current.embedding is not None:
-        dist = Video.embedding.cosine_distance(current.embedding)
+        # Similarity, nudged towards the same topic (raw nomic scores are tightly packed).
+        dist = Video.embedding.cosine_distance(current.embedding) - case(
+            (Video.topic == current.topic, SAME_TOPIC_BONUS), else_=0.0
+        )
         out = list(
             await db.scalars(
                 select(Video)
