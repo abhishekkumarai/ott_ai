@@ -51,6 +51,9 @@ flutter build windows  # uses http://localhost:8088
 
 Android only allows cleartext HTTP to `10.0.2.2`/`localhost`; use HTTPS for anything else.
 
+Windows build prerequisites: VS Build Tools component **C++ ATL** (for `flutter_secure_storage`) and `nuget.exe`
+on `PATH` (the WebView2 plugin downloads its SDK with it; a signed copy lives in the git-ignored `.tools/`).
+
 ## Develop / test
 
 ```bash
