@@ -5,12 +5,17 @@ import 'package:speech_to_text/speech_to_text.dart';
 /// Push-to-talk speech recognition (browser Web Speech API on web, platform recognizer
 /// on Android/Windows). Free; if the platform has no recognizer the mic is hidden.
 class VoiceState {
-  const VoiceState({this.available = false, this.listening = false, this.partial = ''});
+  const VoiceState({
+    this.available = false,
+    this.listening = false,
+    this.partial = '',
+  });
   final bool available;
   final bool listening;
   final String partial;
 
-  VoiceState copyWith({bool? available, bool? listening, String? partial}) => VoiceState(
+  VoiceState copyWith({bool? available, bool? listening, String? partial}) =>
+      VoiceState(
         available: available ?? this.available,
         listening: listening ?? this.listening,
         partial: partial ?? this.partial,
@@ -32,7 +37,8 @@ class VoiceController extends Notifier<VoiceState> {
     try {
       final ok = await _speech.initialize(
         onStatus: (s) {
-          if (s == SpeechToText.doneStatus || s == SpeechToText.notListeningStatus) {
+          if (s == SpeechToText.doneStatus ||
+              s == SpeechToText.notListeningStatus) {
             state = state.copyWith(listening: false);
           }
         },
@@ -73,4 +79,6 @@ class VoiceController extends Notifier<VoiceState> {
   }
 }
 
-final voiceProvider = NotifierProvider<VoiceController, VoiceState>(VoiceController.new);
+final voiceProvider = NotifierProvider<VoiceController, VoiceState>(
+  VoiceController.new,
+);

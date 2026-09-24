@@ -5,18 +5,23 @@ import '../api/api.dart';
 final apiProvider = Provider<ApiClient>((ref) => ApiClient());
 
 class AppUser {
-  const AppUser({required this.id, required this.email, required this.isAdmin, this.isDemo = false});
+  const AppUser({
+    required this.id,
+    required this.email,
+    required this.isAdmin,
+    this.isDemo = false,
+  });
   final String id;
   final String email;
   final bool isAdmin;
   final bool isDemo;
 
   factory AppUser.fromJson(Map<String, dynamic> j) => AppUser(
-        id: j['id'] as String,
-        email: j['email'] as String,
-        isAdmin: j['is_admin'] as bool,
-        isDemo: j['is_demo'] as bool? ?? false,
-      );
+    id: j['id'] as String,
+    email: j['email'] as String,
+    isAdmin: j['is_admin'] as bool,
+    isDemo: j['is_demo'] as bool? ?? false,
+  );
 }
 
 enum AuthStatus { unknown, signedOut, signedIn }
@@ -42,18 +47,33 @@ class AuthController extends Notifier<AuthState> {
     if (state.status != AuthStatus.unknown) return;
     state = data == null
         ? const AuthState(AuthStatus.signedOut)
-        : AuthState(AuthStatus.signedIn, AppUser.fromJson(data['user'] as Map<String, dynamic>));
+        : AuthState(
+            AuthStatus.signedIn,
+            AppUser.fromJson(data['user'] as Map<String, dynamic>),
+          );
   }
 
-  Future<void> signIn(String email, String password, {required bool register}) async {
-    final data = await ref.read(apiProvider).login(email, password, register: register);
-    state = AuthState(AuthStatus.signedIn, AppUser.fromJson(data['user'] as Map<String, dynamic>));
+  Future<void> signIn(
+    String email,
+    String password, {
+    required bool register,
+  }) async {
+    final data = await ref
+        .read(apiProvider)
+        .login(email, password, register: register);
+    state = AuthState(
+      AuthStatus.signedIn,
+      AppUser.fromJson(data['user'] as Map<String, dynamic>),
+    );
   }
 
   /// Throwaway session so people can try everything without an account.
   Future<void> startDemo() async {
     final data = await ref.read(apiProvider).demo();
-    state = AuthState(AuthStatus.signedIn, AppUser.fromJson(data['user'] as Map<String, dynamic>));
+    state = AuthState(
+      AuthStatus.signedIn,
+      AppUser.fromJson(data['user'] as Map<String, dynamic>),
+    );
   }
 
   Future<void> signOut() async {
@@ -62,4 +82,6 @@ class AuthController extends Notifier<AuthState> {
   }
 }
 
-final authProvider = NotifierProvider<AuthController, AuthState>(AuthController.new);
+final authProvider = NotifierProvider<AuthController, AuthState>(
+  AuthController.new,
+);

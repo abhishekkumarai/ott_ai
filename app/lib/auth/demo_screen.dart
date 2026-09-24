@@ -24,7 +24,9 @@ class _DemoScreenState extends ConsumerState<DemoScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeStart(ref.read(authProvider).status));
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _maybeStart(ref.read(authProvider).status),
+    );
   }
 
   Future<void> _maybeStart(AuthStatus status) async {
@@ -39,7 +41,10 @@ class _DemoScreenState extends ConsumerState<DemoScreen> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen(authProvider.select((s) => s.status), (_, status) => _maybeStart(status));
+    ref.listen(
+      authProvider.select((s) => s.status),
+      (_, status) => _maybeStart(status),
+    );
     final theme = ShadTheme.of(context);
     final cs = theme.colorScheme;
     return Scaffold(
@@ -55,14 +60,23 @@ class _DemoScreenState extends ConsumerState<DemoScreen> {
               if (_error == null) ...[
                 SizedBox.square(
                   dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: cs.mutedForeground),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: cs.mutedForeground,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Text('Starting your demo…', style: theme.textTheme.muted),
               ] else ...[
-                Text(_error!, style: theme.textTheme.small.copyWith(color: cs.destructive)),
+                Text(
+                  _error!,
+                  style: theme.textTheme.small.copyWith(color: cs.destructive),
+                ),
                 const SizedBox(height: 16),
-                ShadButton.outline(onPressed: () => context.go('/login'), child: const Text('Back to sign in')),
+                ShadButton.outline(
+                  onPressed: () => context.go('/login'),
+                  child: const Text('Back to sign in'),
+                ),
               ],
             ],
           ),

@@ -5,9 +5,11 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../auth/auth.dart';
 import '../player/player_overlay.dart';
 import '../theme.dart';
+import '../shell/history.dart';
+import '../shell/right_panel.dart';
+import '../shell/side_nav.dart';
 import '../widgets/logo.dart';
 import 'chat_controller.dart';
-import 'models.dart';
 import 'widgets.dart';
 
 class ChatScreen extends ConsumerWidget {
@@ -17,160 +19,147 @@ class ChatScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = ShadTheme.of(context).colorScheme;
     final playerOpen = ref.watch(chatProvider.select((s) => s.playerOpen));
+    final width = MediaQuery.sizeOf(context).width;
+    final mobile = width < mobileBreakpoint;
+    final showRight = width >= rightPanelBreakpoint;
+
+    final main = Stack(
+      fit: StackFit.expand,
+      children: [
+        // Keep the chat mounted underneath so its scroll position survives.
+        Offstage(
+          offstage: playerOpen,
+          child: ExcludeFocus(excluding: playerOpen, child: const _ChatBody()),
+        ),
+        if (playerOpen)
+          Positioned.fill(
+            child: PlayerOverlay(inlineRecommendations: !showRight),
+          ),
+      ],
+    );
+
     return Scaffold(
       backgroundColor: cs.background,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            const _TopBar(),
-            Expanded(
-              child: Stack(
-                fit: StackFit.expand,
+      body: mobile
+          ? SafeArea(
+              bottom: false,
+              child: Column(
                 children: [
-                  // Keep the chat mounted underneath so its scroll position survives.
-                  Offstage(
-                    offstage: playerOpen,
-                    child: ExcludeFocus(excluding: playerOpen, child: const _ChatBody()),
-                  ),
-                  if (playerOpen) const Positioned.fill(child: PlayerOverlay()),
+                  const _MobileBar(),
+                  Expanded(child: main),
                 ],
               ),
+            )
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  width: width >= navExpandedBreakpoint
+                      ? navExpandedWidth
+                      : navRailWidth,
+                  child: SideNav(
+                    expanded: width >= navExpandedBreakpoint,
+                    onHistory: showRight
+                        ? null
+                        : () => showHistorySheet(context),
+                  ),
+                ),
+                VerticalDivider(width: 1, color: cs.border),
+                Expanded(
+                  child: SafeArea(
+                    left: false,
+                    right: false,
+                    bottom: false,
+                    child: main,
+                  ),
+                ),
+                if (showRight) ...[
+                  VerticalDivider(width: 1, color: cs.border),
+                  const SizedBox(width: rightPanelWidth, child: RightPanel()),
+                ],
+              ],
             ),
+    );
+  }
+}
+
+/// History as a right-hand sheet when the right panel isn't on screen.
+void showHistorySheet(BuildContext context) {
+  final width = MediaQuery.sizeOf(context).width;
+  showShadSheet(
+    context: context,
+    side: ShadSheetSide.right,
+    builder: (ctx) => ShadSheet(
+      title: const Text('History'),
+      padding: const EdgeInsets.fromLTRB(16, 20, 8, 0),
+      constraints: BoxConstraints(
+        maxWidth: width < 420 ? width * .88 : rightPanelWidth,
+      ),
+      child: SizedBox(
+        height: MediaQuery.sizeOf(ctx).height - 90,
+        child: HistoryList(onOpened: () => Navigator.of(ctx).pop()),
+      ),
+    ),
+  );
+}
+
+/// Phone top bar: menu (left navigation) · logo · history (right sheet).
+class _MobileBar extends ConsumerWidget {
+  const _MobileBar();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = ShadTheme.of(context).colorScheme;
+    final isDemo = ref.watch(
+      authProvider.select((a) => a.user?.isDemo ?? false),
+    );
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: cs.border)),
+      ),
+      child: SizedBox(
+        height: 52,
+        child: Row(
+          children: [
+            const SizedBox(width: 4),
+            ShadIconButton.ghost(
+              icon: const Icon(LucideIcons.menu, size: 20),
+              onPressed: () => _openMenu(context),
+            ),
+            const Logo(size: 16),
+            if (isDemo) ...[
+              const SizedBox(width: 8),
+              const ShadBadge.outline(child: Text('Demo')),
+            ],
+            const Spacer(),
+            ShadIconButton.ghost(
+              icon: const Icon(LucideIcons.history, size: 19),
+              onPressed: () => showHistorySheet(context),
+            ),
+            ShadIconButton.ghost(
+              icon: const Icon(LucideIcons.squarePen, size: 19),
+              onPressed: ref.read(chatProvider.notifier).newChat,
+            ),
+            const SizedBox(width: 4),
           ],
         ),
       ),
     );
   }
-}
 
-class _TopBar extends ConsumerWidget {
-  const _TopBar();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = ShadTheme.of(context);
-    final cs = theme.colorScheme;
-    final s = ref.watch(chatProvider);
-    final chat = ref.read(chatProvider.notifier);
-    final narrow = MediaQuery.sizeOf(context).width < 600;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: cs.border))),
-      child: SizedBox(
-        height: 56,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
-            children: [
-              const Logo(),
-              if (ref.watch(authProvider.select((a) => a.user?.isDemo ?? false))) ...[
-                const SizedBox(width: 10),
-                ShadTooltip(
-                  builder: (_) => const Text('Temporary demo session, deleted after 24 hours'),
-                  child: const ShadBadge.outline(child: Text('Demo')),
-                ),
-              ],
-              const Spacer(),
-              if (s.models.length > 1)
-                ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: narrow ? 130 : 180),
-                  child: ShadSelect<String>(
-                    initialValue: s.model,
-                    minWidth: narrow ? 120 : 160,
-                    onChanged: (m) {
-                      if (m != null) chat.setModel(m);
-                    },
-                    options: [
-                      for (final m in s.models) ShadOption(value: m, child: Text(m)),
-                    ],
-                    selectedOptionBuilder: (_, v) =>
-                        Text(v, overflow: TextOverflow.ellipsis, style: theme.textTheme.small),
-                  ),
-                ),
-              const SizedBox(width: 4),
-              ShadTooltip(
-                builder: (_) => const Text('History'),
-                child: ShadIconButton.ghost(
-                  icon: const Icon(LucideIcons.history, size: 18),
-                  onPressed: () => _showHistory(context, ref),
-                ),
-              ),
-              ShadTooltip(
-                builder: (_) => const Text('New chat'),
-                child: ShadIconButton.ghost(
-                  icon: const Icon(LucideIcons.squarePen, size: 18),
-                  onPressed: chat.newChat,
-                ),
-              ),
-              ShadTooltip(
-                builder: (_) => Text('Sign out ${ref.read(authProvider).user?.email ?? ''}'),
-                child: ShadIconButton.ghost(
-                  icon: const Icon(LucideIcons.logOut, size: 18),
-                  onPressed: () {
-                    chat.newChat();
-                    ref.read(authProvider.notifier).signOut();
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showHistory(BuildContext context, WidgetRef ref) {
-    final chat = ref.read(chatProvider.notifier);
-    final wide = MediaQuery.sizeOf(context).width >= 600;
+  void _openMenu(BuildContext context) {
     showShadSheet(
       context: context,
-      side: wide ? ShadSheetSide.left : ShadSheetSide.bottom,
+      side: ShadSheetSide.left,
       builder: (ctx) => ShadSheet(
-        title: const Text('Your chats'),
-        constraints: wide ? const BoxConstraints(maxWidth: 380) : const BoxConstraints(maxHeight: 520),
-        child: FutureBuilder<List<Conversation>>(
-          future: chat.conversations(),
-          builder: (ctx, snap) {
-            final theme = ShadTheme.of(ctx);
-            if (snap.connectionState != ConnectionState.done) {
-              return const Padding(padding: EdgeInsets.all(24), child: Center(child: TypingIndicator()));
-            }
-            final items = snap.data ?? const [];
-            if (snap.hasError || items.isEmpty) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Text(snap.hasError ? 'Couldn’t load your chats.' : 'No chats yet.',
-                    style: theme.textTheme.muted),
-              );
-            }
-            return Material(
-              color: Colors.transparent,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (final c in items)
-                    ListTile(
-                      dense: true,
-                      contentPadding: const EdgeInsets.only(left: 4),
-                      leading: const Icon(LucideIcons.messageSquare, size: 16),
-                      title: Text(c.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.small),
-                      trailing: ShadIconButton.ghost(
-                        icon: const Icon(LucideIcons.trash2, size: 15),
-                        onPressed: () async {
-                          Navigator.of(ctx).pop();
-                          await chat.deleteConversation(c.id);
-                        },
-                      ),
-                      onTap: () {
-                        Navigator.of(ctx).pop();
-                        chat.open(c);
-                      },
-                    ),
-                ],
-              ),
-            );
-          },
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(maxWidth: navExpandedWidth + 24),
+        child: SizedBox(
+          height: MediaQuery.sizeOf(ctx).height,
+          child: SideNav(
+            expanded: true,
+            onNavigate: () => Navigator.of(ctx).pop(),
+          ),
         ),
       ),
     );
@@ -202,7 +191,9 @@ class _ChatBodyState extends ConsumerState<_ChatBody> {
 
     ref.listen(chatProvider.select((s) => s.error), (_, err) {
       if (err != null) {
-        ShadToaster.of(context).show(ShadToast.destructive(description: Text(err)));
+        ShadToaster.of(
+          context,
+        ).show(ShadToast.destructive(description: Text(err)));
       }
     });
 
@@ -211,21 +202,32 @@ class _ChatBodyState extends ConsumerState<_ChatBody> {
         : ListView.builder(
             controller: _scroll,
             reverse: true,
-            padding: EdgeInsets.fromLTRB(narrow ? 16 : 24, 24, narrow ? 16 : 24, 12),
+            padding: EdgeInsets.fromLTRB(
+              narrow ? 16 : 24,
+              24,
+              narrow ? 16 : 24,
+              12,
+            ),
             itemCount: s.messages.length + (s.sending ? 1 : 0),
             itemBuilder: (_, i) {
               if (s.sending && i == 0) {
                 return const Padding(
                   padding: EdgeInsets.only(bottom: 18),
-                  child: Align(alignment: Alignment.centerLeft, child: TypingIndicator()),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: TypingIndicator(),
+                  ),
                 );
               }
-              final m = s.messages[s.messages.length - 1 - (i - (s.sending ? 1 : 0))];
+              final m =
+                  s.messages[s.messages.length - 1 - (i - (s.sending ? 1 : 0))];
               return Padding(
                 padding: const EdgeInsets.only(bottom: 18),
                 child: Center(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: contentMaxWidth),
+                    constraints: const BoxConstraints(
+                      maxWidth: contentMaxWidth,
+                    ),
                     child: MessageBubble(message: m),
                   ),
                 ),
@@ -237,7 +239,12 @@ class _ChatBodyState extends ConsumerState<_ChatBody> {
       children: [
         Expanded(child: list),
         Padding(
-          padding: EdgeInsets.fromLTRB(narrow ? 12 : 24, 0, narrow ? 12 : 24, 12),
+          padding: EdgeInsets.fromLTRB(
+            narrow ? 12 : 24,
+            0,
+            narrow ? 12 : 24,
+            12,
+          ),
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: contentMaxWidth),
@@ -248,7 +255,10 @@ class _ChatBodyState extends ConsumerState<_ChatBody> {
                   Text(
                     'Videos play from YouTube. Say “forward 25 sec” or “stop” while watching.',
                     textAlign: TextAlign.center,
-                    style: theme.textTheme.muted.copyWith(fontSize: 12, color: cs.mutedForeground),
+                    style: theme.textTheme.muted.copyWith(
+                      fontSize: 12,
+                      color: cs.mutedForeground,
+                    ),
                   ),
                 ],
               ),
@@ -283,7 +293,10 @@ class _EmptyState extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('What do you want to watch?', style: theme.textTheme.h2.copyWith(letterSpacing: -0.6)),
+              Text(
+                'What do you want to watch?',
+                style: theme.textTheme.h2.copyWith(letterSpacing: -0.6),
+              ),
               const SizedBox(height: 8),
               Text(
                 'Ask about any topic. I’ll find a free video and play it right here.',
@@ -309,4 +322,3 @@ class _EmptyState extends ConsumerWidget {
     );
   }
 }
-

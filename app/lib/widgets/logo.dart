@@ -13,15 +13,37 @@ class Logo extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        CustomPaint(size: Size.square(size + 4), painter: _Mark(theme.colorScheme.foreground)),
+        CustomPaint(
+          size: Size.square(size + 4),
+          painter: _Mark(theme.colorScheme.foreground),
+        ),
         SizedBox(width: size * 0.5),
         Text(
           'Reel',
-          style: theme.textTheme.large.copyWith(fontSize: size, fontWeight: FontWeight.w600, letterSpacing: -0.3),
+          style: theme.textTheme.large.copyWith(
+            fontSize: size,
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.3,
+          ),
         ),
       ],
     );
   }
+}
+
+/// Just the mark, for the collapsed navigation rail.
+class LogoMark extends StatelessWidget {
+  const LogoMark({super.key, this.size = 20});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: 'Reel',
+    child: CustomPaint(
+      size: Size.square(size),
+      painter: _Mark(ShadTheme.of(context).colorScheme.foreground),
+    ),
+  );
 }
 
 class _Mark extends CustomPainter {
@@ -31,7 +53,12 @@ class _Mark extends CustomPainter {
   @override
   void paint(Canvas canvas, Size s) {
     final frame = RRect.fromRectAndRadius(
-      Rect.fromLTWH(s.width * .08, s.height * .17, s.width * .84, s.height * .66),
+      Rect.fromLTWH(
+        s.width * .08,
+        s.height * .17,
+        s.width * .84,
+        s.height * .66,
+      ),
       Radius.circular(s.width * .13),
     );
     canvas.drawRRect(frame, Paint()..color = color);

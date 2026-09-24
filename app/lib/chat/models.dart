@@ -35,17 +35,25 @@ class Video {
 enum Role { user, assistant }
 
 class ChatMessage {
-  const ChatMessage({required this.role, required this.text, this.videos = const [], this.pending = false});
+  const ChatMessage({
+    required this.role,
+    required this.text,
+    this.videos = const [],
+    this.pending = false,
+  });
   final Role role;
   final String text;
   final List<Video> videos;
   final bool pending;
 
   factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
-        role: j['role'] == 'user' ? Role.user : Role.assistant,
-        text: j['content'] as String? ?? '',
-        videos: [for (final v in (j['videos'] as List? ?? const [])) Video.fromJson(v as Map<String, dynamic>)],
-      );
+    role: j['role'] == 'user' ? Role.user : Role.assistant,
+    text: j['content'] as String? ?? '',
+    videos: [
+      for (final v in (j['videos'] as List? ?? const []))
+        Video.fromJson(v as Map<String, dynamic>),
+    ],
+  );
 }
 
 enum ActionType { seek, pause, play, stop, next }
@@ -57,23 +65,30 @@ class PlayerAction {
 
   static PlayerAction? fromJson(Object? j) {
     if (j is! Map) return null;
-    final type = ActionType.values.where((a) => a.name == j['type']).firstOrNull;
+    final type = ActionType.values
+        .where((a) => a.name == j['type'])
+        .firstOrNull;
     if (type == null) return null;
     return PlayerAction(type, (j['seconds'] as num?)?.toDouble() ?? 0);
   }
 }
 
 class Conversation {
-  const Conversation({required this.id, required this.title, required this.updatedAt});
+  const Conversation({
+    required this.id,
+    required this.title,
+    required this.updatedAt,
+  });
   final String id;
   final String title;
   final DateTime updatedAt;
 
   factory Conversation.fromJson(Map<String, dynamic> j) => Conversation(
-        id: j['id'] as String,
-        title: j['title'] as String? ?? 'Chat',
-        updatedAt: DateTime.tryParse(j['updated_at'] as String? ?? '') ?? DateTime.now(),
-      );
+    id: j['id'] as String,
+    title: j['title'] as String? ?? 'Chat',
+    updatedAt:
+        DateTime.tryParse(j['updated_at'] as String? ?? '') ?? DateTime.now(),
+  );
 }
 
 String formatTime(num seconds) {

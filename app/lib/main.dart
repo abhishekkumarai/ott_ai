@@ -73,7 +73,10 @@ class _Splash extends StatelessWidget {
       child: Center(
         child: SizedBox.square(
           dimension: 20,
-          child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.mutedForeground),
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: theme.colorScheme.mutedForeground,
+          ),
         ),
       ),
     );

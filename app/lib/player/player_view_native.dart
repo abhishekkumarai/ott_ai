@@ -19,7 +19,14 @@ class PlayerView extends StatefulWidget {
 
 class _PlayerViewState extends State<PlayerView> implements PlayerTransport {
   InAppWebViewController? _controller;
-  static const _commands = {'load', 'seekBy', 'pause', 'play', 'stop', 'unmute'};
+  static const _commands = {
+    'load',
+    'seekBy',
+    'pause',
+    'play',
+    'stop',
+    'unmute',
+  };
   static final _id = RegExp(r'^[A-Za-z0-9_-]{11}$');
   late final Uri _player = Uri.parse(AppConfig.playerUrl);
 
@@ -38,7 +45,9 @@ class _PlayerViewState extends State<PlayerView> implements PlayerTransport {
       'seekBy' => jsonEncode(seconds ?? 0),
       _ => '',
     };
-    _controller?.evaluateJavascript(source: 'window.ottPlayer && window.ottPlayer.$cmd($args);');
+    _controller?.evaluateJavascript(
+      source: 'window.ottPlayer && window.ottPlayer.$cmd($args);',
+    );
   }
 
   bool _isPlayerPage(WebUri? url) =>
@@ -81,13 +90,17 @@ class _PlayerViewState extends State<PlayerView> implements PlayerTransport {
           );
         },
         shouldOverrideUrlLoading: (c, action) async {
-          if (action.isForMainFrame == false) return NavigationActionPolicy.ALLOW;
+          if (action.isForMainFrame == false) {
+            return NavigationActionPolicy.ALLOW;
+          }
           return _isPlayerPage(action.request.url)
               ? NavigationActionPolicy.ALLOW
               : NavigationActionPolicy.CANCEL;
         },
-        onPermissionRequest: (c, request) async =>
-            PermissionResponse(resources: request.resources, action: PermissionResponseAction.DENY),
+        onPermissionRequest: (c, request) async => PermissionResponse(
+          resources: request.resources,
+          action: PermissionResponseAction.DENY,
+        ),
       ),
     );
   }

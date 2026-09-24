@@ -47,7 +47,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _error = null;
     });
     try {
-      await ref.read(authProvider.notifier).signIn(email, password, register: _register);
+      await ref
+          .read(authProvider.notifier)
+          .signIn(email, password, register: _register);
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } finally {
@@ -87,7 +89,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   children: [
                     const Center(child: Logo(size: 20)),
                     const SizedBox(height: 32),
-                    Text(_register ? 'Create an account' : 'Welcome back', style: theme.textTheme.h3),
+                    Text(
+                      _register ? 'Create an account' : 'Welcome back',
+                      style: theme.textTheme.h3,
+                    ),
                     const SizedBox(height: 6),
                     Text(
                       _register
@@ -112,13 +117,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ShadInput(
                       controller: _password,
                       obscureText: true,
-                      autofillHints: [_register ? AutofillHints.newPassword : AutofillHints.password],
+                      autofillHints: [
+                        _register
+                            ? AutofillHints.newPassword
+                            : AutofillHints.password,
+                      ],
                       onSubmitted: (_) => _submit(),
                       maxLength: 128,
                     ),
                     if (_error != null) ...[
                       const SizedBox(height: 12),
-                      Text(_error!, style: theme.textTheme.small.copyWith(color: cs.destructive)),
+                      Text(
+                        _error!,
+                        style: theme.textTheme.small.copyWith(
+                          color: cs.destructive,
+                        ),
+                      ),
                     ],
                     const SizedBox(height: 20),
                     ShadButton(
@@ -126,7 +140,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       leading: _busy
                           ? SizedBox.square(
                               dimension: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: cs.primaryForeground),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: cs.primaryForeground,
+                              ),
                             )
                           : null,
                       child: Text(_register ? 'Create account' : 'Sign in'),
@@ -136,10 +153,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       onPressed: _busy
                           ? null
                           : () => setState(() {
-                                _register = !_register;
-                                _error = null;
-                              }),
-                      child: Text(_register ? 'Sign in instead' : 'Create an account'),
+                              _register = !_register;
+                              _error = null;
+                            }),
+                      child: Text(
+                        _register ? 'Sign in instead' : 'Create an account',
+                      ),
                     ),
                     const SizedBox(height: 20),
                     Row(
@@ -147,7 +166,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         Expanded(child: Divider(color: cs.border, height: 1)),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: Text('or', style: theme.textTheme.muted.copyWith(fontSize: 12)),
+                          child: Text(
+                            'or',
+                            style: theme.textTheme.muted.copyWith(fontSize: 12),
+                          ),
                         ),
                         Expanded(child: Divider(color: cs.border, height: 1)),
                       ],

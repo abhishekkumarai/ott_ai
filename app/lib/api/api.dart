@@ -17,36 +17,43 @@ class ApiException implements Exception {
 /// in secure storage and sent in the body.
 class ApiClient {
   ApiClient({TokenStore? store}) : _store = store ?? TokenStore() {
-    _dio = Dio(BaseOptions(
-      baseUrl: '${AppConfig.apiBase}/api',
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 60),
-      contentType: Headers.jsonContentType,
-      headers: {if (!kIsWeb) 'X-Client': 'native'},
-    ));
-    _dio.interceptors.add(InterceptorsWrapper(
-      onRequest: (options, handler) {
-        if (accessToken != null) options.headers['Authorization'] = 'Bearer $accessToken';
-        handler.next(options);
-      },
-      onError: (err, handler) async {
-        final req = err.requestOptions;
-        final canRetry = err.response?.statusCode == 401 &&
-            !req.path.startsWith('/auth/') &&
-            req.extra['retried'] != true;
-        if (canRetry && await refresh() != null) {
-          req.extra['retried'] = true;
-          req.headers['Authorization'] = 'Bearer $accessToken';
-          try {
-            return handler.resolve(await _dio.fetch(req));
-          } on DioException catch (e) {
-            return handler.next(e);
+    _dio = Dio(
+      BaseOptions(
+        baseUrl: '${AppConfig.apiBase}/api',
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 60),
+        contentType: Headers.jsonContentType,
+        headers: {if (!kIsWeb) 'X-Client': 'native'},
+      ),
+    );
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          if (accessToken != null) {
+            options.headers['Authorization'] = 'Bearer $accessToken';
           }
-        }
-        if (err.response?.statusCode == 401) onSessionExpired?.call();
-        handler.next(err);
-      },
-    ));
+          handler.next(options);
+        },
+        onError: (err, handler) async {
+          final req = err.requestOptions;
+          final canRetry =
+              err.response?.statusCode == 401 &&
+              !req.path.startsWith('/auth/') &&
+              req.extra['retried'] != true;
+          if (canRetry && await refresh() != null) {
+            req.extra['retried'] = true;
+            req.headers['Authorization'] = 'Bearer $accessToken';
+            try {
+              return handler.resolve(await _dio.fetch(req));
+            } on DioException catch (e) {
+              return handler.next(e);
+            }
+          }
+          if (err.response?.statusCode == 401) onSessionExpired?.call();
+          handler.next(err);
+        },
+      ),
+    );
   }
 
   late final Dio _dio;
@@ -72,7 +79,10 @@ class ApiClient {
     final stored = kIsWeb ? null : await _store.read();
     if (!kIsWeb && stored == null) return null;
     try {
-      final r = await _dio.post('/auth/refresh', data: {'refresh_token': ?stored});
+      final r = await _dio.post(
+        '/auth/refresh',
+        data: {'refresh_token': ?stored},
+      );
       return _session(Map<String, dynamic>.from(r.data as Map));
     } on DioException {
       accessToken = null;
@@ -81,9 +91,15 @@ class ApiClient {
     }
   }
 
-  Future<Map<String, dynamic>> login(String email, String password, {bool register = false}) async {
-    final data = await post(register ? '/auth/register' : '/auth/login',
-        {'email': email, 'password': password});
+  Future<Map<String, dynamic>> login(
+    String email,
+    String password, {
+    bool register = false,
+  }) async {
+    final data = await post(register ? '/auth/register' : '/auth/login', {
+      'email': email,
+      'password': password,
+    });
     return _session(data as Map<String, dynamic>);
   }
 
@@ -106,7 +122,8 @@ class ApiClient {
   Future<dynamic> get(String path, [Map<String, dynamic>? query]) =>
       _wrap(() => _dio.get(path, queryParameters: query));
 
-  Future<dynamic> post(String path, [Object? body]) => _wrap(() => _dio.post(path, data: body));
+  Future<dynamic> post(String path, [Object? body]) =>
+      _wrap(() => _dio.post(path, data: body));
 
   Future<dynamic> delete(String path) => _wrap(() => _dio.delete(path));
 
@@ -121,7 +138,9 @@ class ApiClient {
 
   static String _message(DioException e) {
     final data = e.response?.data;
-    if (data is Map && data['detail'] is String) return data['detail'] as String;
+    if (data is Map && data['detail'] is String) {
+      return data['detail'] as String;
+    }
     if (data is Map && data['detail'] is List) {
       final first = (data['detail'] as List).firstOrNull;
       if (first is Map && first['msg'] is String) {
@@ -129,8 +148,7 @@ class ApiClient {
       }
     }
     return switch (e.type) {
-      DioExceptionType.connectionError ||
-      DioExceptionType.connectionTimeout =>
+      DioExceptionType.connectionError || DioExceptionType.connectionTimeout =>
         'Can’t reach the server. Check your connection.',
       DioExceptionType.receiveTimeout => 'The server took too long to answer.',
       _ => 'Something went wrong (${e.response?.statusCode ?? 'network'}).',

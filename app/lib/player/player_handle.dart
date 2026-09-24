@@ -2,8 +2,15 @@ import 'dart:async';
 
 /// Events coming back from player.js.
 class PlayerEvent {
-  const PlayerEvent(this.type, {this.t = 0, this.d = 0, this.playing = false, this.message});
-  final String type; // ready | time | state | stopped | ended | end-reached | muted | error
+  const PlayerEvent(
+    this.type, {
+    this.t = 0,
+    this.d = 0,
+    this.playing = false,
+    this.message,
+  });
+  final String
+  type; // ready | time | state | stopped | ended | end-reached | muted | error
   final double t;
   final double d;
   final bool playing;

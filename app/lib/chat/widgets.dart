@@ -10,7 +10,13 @@ import 'models.dart';
 
 /// A thumbnail card for a video result or recommendation.
 class VideoCard extends StatelessWidget {
-  const VideoCard({super.key, required this.video, required this.onTap, this.compact = false, this.active = false});
+  const VideoCard({
+    super.key,
+    required this.video,
+    required this.onTap,
+    this.compact = false,
+    this.active = false,
+  });
   final Video video;
   final VoidCallback onTap;
   final bool compact;
@@ -32,18 +38,30 @@ class VideoCard extends StatelessWidget {
               video.thumbnail,
               fit: BoxFit.cover,
               gaplessPlayback: true,
-              errorBuilder: (_, _, _) => Icon(LucideIcons.clapperboard, color: cs.mutedForeground),
+              errorBuilder: (_, _, _) =>
+                  Icon(LucideIcons.clapperboard, color: cs.mutedForeground),
             ),
             if (video.durationS > 0)
               Positioned(
                 right: 6,
                 bottom: 6,
                 child: DecoratedBox(
-                  decoration: BoxDecoration(color: const Color(0xCC000000), borderRadius: BorderRadius.circular(4)),
+                  decoration: BoxDecoration(
+                    color: const Color(0xCC000000),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    child: Text(formatTime(video.durationS),
-                        style: theme.textTheme.small.copyWith(color: Colors.white, fontSize: 11)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 1,
+                    ),
+                    child: Text(
+                      formatTime(video.durationS),
+                      style: theme.textTheme.small.copyWith(
+                        color: Colors.white,
+                        fontSize: 11,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -54,13 +72,22 @@ class VideoCard extends StatelessWidget {
     final meta = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(video.title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.small.copyWith(fontWeight: FontWeight.w500, height: 1.3)),
+        Text(
+          video.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.small.copyWith(
+            fontWeight: FontWeight.w500,
+            height: 1.3,
+          ),
+        ),
         const SizedBox(height: 3),
-        Text(video.channel,
-            maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.muted.copyWith(fontSize: 12)),
+        Text(
+          video.channel,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.muted.copyWith(fontSize: 12),
+        ),
       ],
     );
     return Semantics(
@@ -78,9 +105,16 @@ class VideoCard extends StatelessWidget {
             child: compact
                 ? Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [SizedBox(width: 132, child: thumb), const SizedBox(width: 10), Expanded(child: meta)],
+                    children: [
+                      SizedBox(width: 132, child: thumb),
+                      const SizedBox(width: 10),
+                      Expanded(child: meta),
+                    ],
                   )
-                : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [thumb, const SizedBox(height: 8), meta]),
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [thumb, const SizedBox(height: 8), meta],
+                  ),
           ),
         ),
       ),
@@ -89,7 +123,11 @@ class VideoCard extends StatelessWidget {
 }
 
 class MessageBubble extends ConsumerWidget {
-  const MessageBubble({super.key, required this.message, this.showVideos = true});
+  const MessageBubble({
+    super.key,
+    required this.message,
+    this.showVideos = true,
+  });
   final ChatMessage message;
   final bool showVideos;
 
@@ -113,35 +151,45 @@ class MessageBubble extends ConsumerWidget {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
           child: DecoratedBox(
-            decoration: BoxDecoration(color: cs.primary, borderRadius: BorderRadius.circular(14)),
-            child: Padding(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9), child: text),
+            decoration: BoxDecoration(
+              color: cs.primary,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              child: text,
+            ),
           ),
         ),
       );
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SelectionArea(child: text),
-        if (showVideos && message.videos.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 196,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: message.videos.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 6),
-              itemBuilder: (_, i) => SizedBox(
-                width: 220,
-                child: VideoCard(
-                  video: message.videos[i],
-                  onTap: () => ref.read(chatProvider.notifier).play(message.videos[i]),
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SelectionArea(child: text),
+          if (showVideos && message.videos.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 196,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: message.videos.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 6),
+                itemBuilder: (_, i) => SizedBox(
+                  width: 220,
+                  child: VideoCard(
+                    video: message.videos[i],
+                    onTap: () =>
+                        ref.read(chatProvider.notifier).play(message.videos[i]),
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
         ],
-      ],
+      ),
     );
   }
 }
@@ -153,8 +201,12 @@ class TypingIndicator extends StatefulWidget {
   State<TypingIndicator> createState() => _TypingIndicatorState();
 }
 
-class _TypingIndicatorState extends State<TypingIndicator> with SingleTickerProviderStateMixin {
-  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1100))..repeat();
+class _TypingIndicatorState extends State<TypingIndicator>
+    with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..repeat();
 
   @override
   void dispose() {
@@ -176,8 +228,16 @@ class _TypingIndicatorState extends State<TypingIndicator> with SingleTickerProv
               Padding(
                 padding: const EdgeInsets.only(right: 4),
                 child: Opacity(
-                  opacity: 0.3 + 0.7 * (1 - ((_c.value * 3 - i) % 3).clamp(0, 1)),
-                  child: Container(width: 6, height: 6, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                  opacity:
+                      0.3 + 0.7 * (1 - ((_c.value * 3 - i) % 3).clamp(0, 1)),
+                  child: Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
                 ),
               ),
           ],
@@ -209,7 +269,8 @@ class Composer extends ConsumerStatefulWidget {
 
 class _ComposerState extends ConsumerState<Composer> {
   final _text = TextEditingController();
-  late final FocusNode _focus = (widget.focusNode ?? FocusNode())..onKeyEvent = _onKey;
+  late final FocusNode _focus = (widget.focusNode ?? FocusNode())
+    ..onKeyEvent = _onKey;
 
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
     if (!widget.playerKeys || e is KeyUpEvent) return KeyEventResult.ignored;
@@ -280,10 +341,16 @@ class _ComposerState extends ConsumerState<Composer> {
             Expanded(
               child: voice.listening
                   ? Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                       child: Text(
                         voice.partial.isEmpty ? 'Listening…' : voice.partial,
-                        style: theme.textTheme.p.copyWith(color: cs.mutedForeground, fontSize: 15),
+                        style: theme.textTheme.p.copyWith(
+                          color: cs.mutedForeground,
+                          fontSize: 15,
+                        ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -292,7 +359,11 @@ class _ComposerState extends ConsumerState<Composer> {
                       controller: _text,
                       focusNode: _focus,
                       autofocus: widget.autofocus,
-                      placeholder: Text(widget.hint),
+                      placeholder: Text(
+                        widget.hint,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       decoration: const ShadDecoration(
                         border: ShadBorder.none,
                         focusedBorder: ShadBorder.none,
@@ -306,7 +377,10 @@ class _ComposerState extends ConsumerState<Composer> {
             ),
             if (voice.available)
               ShadIconButton.ghost(
-                icon: Icon(voice.listening ? LucideIcons.micOff : LucideIcons.mic, size: 18),
+                icon: Icon(
+                  voice.listening ? LucideIcons.micOff : LucideIcons.mic,
+                  size: 18,
+                ),
                 onPressed: _toggleMic,
                 foregroundColor: voice.listening ? accent : null,
               ),
@@ -317,7 +391,11 @@ class _ComposerState extends ConsumerState<Composer> {
               icon: sending
                   ? SizedBox.square(
                       dimension: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: cs.primaryForeground))
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: cs.primaryForeground,
+                      ),
+                    )
                   : const Icon(LucideIcons.arrowUp, size: 18),
               onPressed: sending ? null : _send,
             ),

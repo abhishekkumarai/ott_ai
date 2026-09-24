@@ -11,7 +11,9 @@ class AppConfig {
   static String get apiBase {
     if (_override.isNotEmpty) return _override;
     if (kIsWeb) return Uri.base.origin;
-    if (defaultTargetPlatform == TargetPlatform.android) return 'http://10.0.2.2:8088';
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return 'http://10.0.2.2:8088';
+    }
     return 'http://localhost:8088';
   }
 
