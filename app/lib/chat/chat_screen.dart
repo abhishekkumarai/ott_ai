@@ -203,19 +203,26 @@ class _ChatBodyState extends ConsumerState<_ChatBody> {
             controller: _scroll,
             reverse: true,
             padding: EdgeInsets.fromLTRB(
-              narrow ? 16 : 24,
+              narrow ? 12 : 24,
               24,
-              narrow ? 16 : 24,
+              narrow ? 12 : 24,
               12,
             ),
             itemCount: s.messages.length + (s.sending ? 1 : 0),
             itemBuilder: (_, i) {
               if (s.sending && i == 0) {
-                return const Padding(
-                  padding: EdgeInsets.only(bottom: 18),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: TypingIndicator(),
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 18),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxWidth: contentMaxWidth,
+                      ),
+                      child: const Align(
+                        alignment: Alignment.centerLeft,
+                        child: TypingIndicator(),
+                      ),
+                    ),
                   ),
                 );
               }
@@ -285,11 +292,19 @@ class _EmptyState extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = ShadTheme.of(context);
+    final narrow = MediaQuery.sizeOf(context).width < 600;
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        // Same horizontal padding and max width as the composer below, so both
+        // share one left edge.
+        padding: EdgeInsets.symmetric(
+          horizontal: narrow ? 12 : 24,
+          vertical: 24,
+        ),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 560),
+          // Tight width (clamped to what's available) so the column doesn't
+          // shrink-wrap its text and drift off-center from the composer.
+          constraints: const BoxConstraints.tightFor(width: contentMaxWidth),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

@@ -337,6 +337,8 @@ class _ComposerState extends ConsumerState<Composer> {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(4, 4, 6, 4),
         child: Row(
+          // Buttons stay on the last line as long text wraps and the box grows.
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Expanded(
               child: voice.listening
@@ -369,6 +371,11 @@ class _ComposerState extends ConsumerState<Composer> {
                         focusedBorder: ShadBorder.none,
                         secondaryFocusedBorder: ShadBorder.none,
                       ),
+                      // Wrap long input instead of scrolling it sideways out of
+                      // view; Enter still sends (action isn't `newline`).
+                      minLines: 1,
+                      maxLines: 4,
+                      keyboardType: TextInputType.text,
                       maxLength: 500,
                       maxLengthEnforcement: MaxLengthEnforcement.enforced,
                       textInputAction: TextInputAction.send,

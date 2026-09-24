@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -106,7 +107,12 @@ class _Main extends ConsumerWidget {
   static const _stripH = 172.0;
   static const _recsH = _stripH + 34;
   static const _composerH = 72.0;
-  static const _minTranscriptH = 56.0;
+
+  /// Room for the latest question + reply without clipping the question.
+  static const _minTranscriptH = 96.0;
+
+  /// Narrowest desktop column, so a short window doesn't squeeze the composer.
+  static const _minColumnW = 560.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -141,98 +147,106 @@ class _Main extends ConsumerWidget {
           (c.maxHeight - fixed).clamp(0.0, double.infinity),
         );
         final w = playerH * 16 / 9;
+        // Video, controls, title, transcript and composer share one centered
+        // column so their edges line up. On phones the video is edge-to-edge
+        // and the rest is inset by hPad.
+        final colW = compact
+            ? c.maxWidth
+            : math.min(playerW, math.max(w, _minColumnW));
+        final pad = compact ? hPad : 0.0;
 
         return SafeArea(
           top: false,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(height: topPad),
-              Center(
-                child: SizedBox(
-                  width: w,
-                  height: playerH,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(compact ? 0 : 10),
-                    child: ref.read(playerViewBuilderProvider)(handle),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: hPad),
-                child: const _Controls(),
-              ),
-              if (showMeta)
-                Padding(
-                  padding: EdgeInsets.fromLTRB(hPad + 4, 0, hPad + 4, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        video.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.large.copyWith(fontSize: 16),
+          child: Center(
+            child: SizedBox(
+              width: colW,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(height: topPad),
+                  Center(
+                    child: SizedBox(
+                      width: w,
+                      height: playerH,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(compact ? 0 : 10),
+                        child: ref.read(playerViewBuilderProvider)(handle),
                       ),
-                      Text(
-                        video.channel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.muted,
-                      ),
-                    ],
-                  ),
-                ),
-              if (showRecs) ...[
-                Padding(
-                  padding: EdgeInsets.fromLTRB(hPad + 4, 12, hPad, 6),
-                  child: Text(
-                    'Up next',
-                    style: theme.textTheme.small.copyWith(
-                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                ),
-                const SizedBox(
-                  height: _stripH,
-                  child: Recommendations(strip: true),
-                ),
-              ],
-              Expanded(
-                // Fade the top edge so partially scrolled messages don't look cut off.
-                child: ShaderMask(
-                  blendMode: BlendMode.dstIn,
-                  shaderCallback: (r) => const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0x00000000), Color(0xFF000000)],
-                    stops: [0, .22],
-                  ).createShader(r),
-                  child: ListView(
-                    reverse: true,
-                    padding: EdgeInsets.fromLTRB(hPad + 4, 8, hPad + 4, 8),
-                    children: [
-                      if (sending)
-                        const Align(
-                          alignment: Alignment.centerLeft,
-                          child: TypingIndicator(),
-                        ),
-                      for (final m in recent.reversed)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: MessageBubble(message: m, showVideos: false),
-                        ),
-                    ],
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: pad),
+                    child: const _Controls(),
                   ),
-                ),
-              ),
-              Padding(
-                padding: EdgeInsets.fromLTRB(hPad, 0, hPad, 12),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      maxWidth: contentMaxWidth + 80,
+                  if (showMeta)
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(pad + 4, 0, pad + 4, 0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            video.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.large.copyWith(fontSize: 16),
+                          ),
+                          Text(
+                            video.channel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.muted,
+                          ),
+                        ],
+                      ),
                     ),
+                  if (showRecs) ...[
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(pad + 4, 12, pad, 6),
+                      child: Text(
+                        'Up next',
+                        style: theme.textTheme.small.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(
+                      height: _stripH,
+                      child: Recommendations(strip: true),
+                    ),
+                  ],
+                  Expanded(
+                    // Fade the top edge so partially scrolled messages don't look cut off.
+                    child: ShaderMask(
+                      blendMode: BlendMode.dstIn,
+                      shaderCallback: (r) => const LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Color(0x00000000), Color(0xFF000000)],
+                        stops: [0, .22],
+                      ).createShader(r),
+                      child: ListView(
+                        reverse: true,
+                        padding: EdgeInsets.fromLTRB(pad + 4, 8, pad + 4, 8),
+                        children: [
+                          if (sending)
+                            const Align(
+                              alignment: Alignment.centerLeft,
+                              child: TypingIndicator(),
+                            ),
+                          for (final m in recent.reversed)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: MessageBubble(
+                                message: m,
+                                showVideos: false,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(pad, 0, pad, 12),
                     child: Composer(
                       autofocus: true,
                       playerKeys: true,
@@ -242,9 +256,9 @@ class _Main extends ConsumerWidget {
                           : 'Say “forward 25 sec”, “pause”, “next” or “stop”',
                     ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
         );
       },
