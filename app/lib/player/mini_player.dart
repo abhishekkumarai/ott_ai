@@ -8,6 +8,7 @@ import '../library/saved.dart';
 import '../settings/preferences.dart';
 import '../theme.dart';
 import 'player_controls.dart';
+import 'transcript.dart';
 
 /// Floating card that keeps the video playing while the chat is in front (OTTAI-3).
 ///
@@ -112,7 +113,12 @@ class MiniPlayer extends ConsumerWidget {
       ),
       Padding(
         padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-        child: _Title(video: video),
+        child: Row(
+          children: [
+            Expanded(child: _Title(video: video)),
+            TranscriptLink(video: video),
+          ],
+        ),
       ),
     ],
   );

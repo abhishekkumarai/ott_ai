@@ -15,6 +15,7 @@ import '../shell/recommendations.dart';
 import '../theme.dart';
 import 'player_controls.dart';
 import 'player_handle.dart';
+import 'transcript.dart';
 
 /// Theater mode: the large player over the chat area. Chat/voice commands keep
 /// working here; keyboard shortcuts are handled app-wide (shell/shortcuts.dart).
@@ -158,11 +159,19 @@ class _Main extends ConsumerWidget {
                               fontWeight: FontWeight.w700,
                             ),
                           ),
-                          Text(
-                            video.channel,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.muted,
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  video.channel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.muted,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              TranscriptLink(video: video),
+                            ],
                           ),
                         ],
                       ),

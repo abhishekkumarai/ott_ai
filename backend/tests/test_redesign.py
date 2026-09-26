@@ -224,3 +224,98 @@ def test_timecode_helper():
     assert stamp_seconds("0:00") == 0
     assert stamp_seconds("3:40") == 220
     assert stamp_seconds("1:02:03") == 3723
+
+
+# ---------- curated chapters, transcript and summaries (OTTAI-20) ----------
+
+async def _admin(client):
+    from sqlalchemy import update
+
+    from app.db import SessionLocal
+    from app.models import User
+
+    tok = (await register(client, "admin@example.com"))["access_token"]
+    async with SessionLocal() as db:
+        await db.execute(update(User).where(User.email == "admin@example.com").values(is_admin=True))
+        await db.commit()
+    # A fresh token carries the admin claim.
+    r = await client.post(
+        "/api/auth/login", json={"email": "admin@example.com", "password": "correct horse battery"}
+    )
+    return auth(r.json()["access_token"]) if r.status_code == 200 else auth(tok)
+
+
+async def test_admin_curates_chapters_and_transcript(client):
+    await seed_catalog()
+    admin = await _admin(client)
+    bad = await client.patch(
+        "/api/admin/videos/ccccccccccc", json={"chapters_text": "1:00 a\n2:00 b"}, headers=admin
+    )
+    assert bad.status_code == 422
+    r = await client.patch(
+        "/api/admin/videos/ccccccccccc",
+        json={
+            "chapters_text": "0:00 Intro\n1:00 Stars\n3:00 Horizons",
+            "transcript": "0:00 Welcome to the show\n1:05 Stars collapse when fuel runs out\n3:10 The horizon",
+        },
+        headers=admin,
+    )
+    assert r.status_code == 200 and r.json()["has_chapters"] and r.json()["has_transcript"]
+    detail = (await client.get("/api/admin/videos/ccccccccccc", headers=admin)).json()
+    assert detail["chapters_text"].startswith("0:00 Intro")
+
+    user = auth((await register(client))["access_token"])
+    chapters = (await client.get("/api/videos/ccccccccccc/chapters", headers=user)).json()
+    assert [c["title"] for c in chapters] == ["Intro", "Stars", "Horizons"]
+    lines = (await client.get("/api/videos/ccccccccccc/transcript", headers=user)).json()
+    assert lines[1] == {"start_s": 65, "text": "Stars collapse when fuel runs out"}
+    assert (await client.get("/api/videos/aaaaaaaaaaa/transcript", headers=user)).status_code == 404
+
+    # "" clears both fields again
+    r = await client.patch(
+        "/api/admin/videos/ccccccccccc", json={"chapters_text": "", "transcript": ""}, headers=admin
+    )
+    assert not r.json()["has_chapters"] and not r.json()["has_transcript"]
+    assert (await client.get("/api/videos/ccccccccccc/chapters", headers=user)).json() == []
+
+
+async def test_summary_of_a_part(client, monkeypatch):
+    from app import ollama
+
+    seen = {}
+
+    async def fake_chat_json(model, messages, schema, num_predict=200):
+        seen["prompt"] = messages[-1]["content"]
+        return {"summary": "Stars collapse when their fuel runs out."}
+
+    await seed_catalog()
+    admin = await _admin(client)
+    transcript = "0:00 Welcome to the show and today we look at the sky\n" \
+                 "1:05 Stars collapse when fuel runs out and gravity wins over pressure\n" \
+                 "3:10 The horizon is the point of no return"
+    await client.patch("/api/admin/videos/ccccccccccc", json={"transcript": transcript}, headers=admin)
+    user = auth((await register(client))["access_token"])
+    conv = (await client.post("/api/chat", json={"message": "hello"}, headers=user)).json()["conversation_id"]
+
+    monkeypatch.setattr(ollama, "chat_json", fake_chat_json)
+    r = await client.post(
+        "/api/videos/ccccccccccc/summary",
+        json={"start_s": 60, "end_s": 180, "label": "Stars", "conversation_id": conv},
+        headers=user,
+    )
+    assert r.status_code == 200 and r.json()["summary"].startswith("Stars collapse")
+    assert "gravity wins" in seen["prompt"] and "point of no return" not in seen["prompt"]
+    msgs = (await client.get(f"/api/conversations/{conv}/messages", headers=user)).json()
+    assert [m["content"] for m in msgs[-2:]] == [
+        "Summarize “Stars”",
+        "Stars collapse when their fuel runs out.",
+    ]
+
+    async def offline(*a, **k):
+        return None
+
+    monkeypatch.setattr(ollama, "chat_json", offline)
+    r = await client.post("/api/videos/ccccccccccc/summary", json={}, headers=user)
+    assert r.status_code == 503
+    r = await client.post("/api/videos/aaaaaaaaaaa/summary", json={}, headers=user)
+    assert r.status_code == 404

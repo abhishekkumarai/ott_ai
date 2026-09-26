@@ -90,8 +90,12 @@ class FakeApi extends ApiClient {
       sent.add(b);
       return onChat!(b);
     }
+    if (onPost != null) return onPost!(path, body);
     return null;
   }
+
+  /// Other POSTs (e.g. summaries); may throw ApiException.
+  Object? Function(String path, Object? body)? onPost;
 }
 
 Map<String, dynamic> _video(String id, String title) => {

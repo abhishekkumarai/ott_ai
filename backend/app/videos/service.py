@@ -267,3 +267,41 @@ def parse_chapters(description: str, duration_s: int = 0) -> list[dict]:
     if len(out) < 3 or out[0]["start_s"] != 0:
         return []
     return out
+
+
+# "1:15 some words", "[01:15] some words", "(1:02:03) words"
+_TRANSCRIPT_LINE = re.compile(
+    r"^\s*[\[(]?((?:\d{1,2}:)?\d{1,2}:\d{2})[\])]?\s*[-\u2013\u2014:|.)]*\s*(\S.*)$"
+)
+MAX_TRANSCRIPT_LINES = 5000
+
+
+def parse_transcript(text: str) -> list[dict]:
+    """Transcript lines. A leading timestamp makes a line seekable ("start_s");
+    lines without one keep start_s None (plain pasted text)."""
+    out: list[dict] = []
+    for raw in (text or "").splitlines():
+        line = " ".join(raw.split())
+        if not line:
+            continue
+        m = _TRANSCRIPT_LINE.match(line)
+        if m:
+            out.append({"start_s": stamp_seconds(m.group(1)), "text": m.group(2)[:1000]})
+        else:
+            out.append({"start_s": None, "text": line[:1000]})
+        if len(out) >= MAX_TRANSCRIPT_LINES:
+            break
+    return out
+
+
+def transcript_excerpt(lines: list[dict], start: float | None, end: float | None, limit: int = 12000) -> str:
+    """Text for [start, end). Timed lines are filtered by time; an untimed
+    transcript can't be sliced, so the whole text is used."""
+    timed = [ln for ln in lines if ln["start_s"] is not None]
+    if timed and (start is not None or end is not None):
+        lo = start or 0
+        hi = end if end is not None else float("inf")
+        picked = [ln["text"] for ln in timed if lo <= ln["start_s"] < hi]
+    else:
+        picked = [ln["text"] for ln in lines]
+    return " ".join(picked)[:limit]

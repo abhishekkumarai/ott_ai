@@ -17,7 +17,9 @@ Control playback by typing, speaking or using the keyboard:
 
 Videos play in a floating **mini player** so the chat stays in front; **theater mode** gives a large player.
 Replies show the video's **key moments** (chapters from the description; click to seek) and **alternatives**
-with a match %. Save videos to a per-user library (sidebar › Saved). Settings (model, player mode, playback,
+with a match %. Admins can paste chapters and a transcript per catalog video (admin page › Chapters & transcript);
+then the player shows a **Transcript** (click a line to jump) and “**Summarize this part**” asks the local model.
+Save videos to a per-user library (sidebar › Saved). Settings (model, player mode, playback,
 voice, appearance, account) are saved per user; which reply blocks you collapsed is remembered on the device.
 
 Keyboard (when not typing): `Space` play/pause · `M` mute · `←`/`→` seek · `N` next · `I` mini player ·

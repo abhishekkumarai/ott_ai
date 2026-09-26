@@ -1,11 +1,14 @@
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
-from pydantic import BaseModel
-from sqlalchemy import select
+from pydantic import BaseModel, Field
+from sqlalchemy import func, select
 
+from app import ollama
+from app.config import get_settings
 from app.deps import DB, CurrentUser, limiter
-from app.models import Video, WatchHistory
+from app.models import Conversation, Message, Video, WatchHistory
 from app.videos import service
 
 router = APIRouter(prefix="/api/videos", tags=["videos"])
@@ -61,7 +64,91 @@ async def chapters(request: Request, db: DB, user: CurrentUser, youtube_id: Yout
     v = await db.scalar(select(Video).where(Video.youtube_id == youtube_id))
     if v is None:
         raise HTTPException(404, "Unknown video")
-    return [ChapterOut(**c) for c in service.parse_chapters(v.description, v.duration_s)]
+    source = v.chapters_text or v.description
+    return [ChapterOut(**c) for c in service.parse_chapters(source, v.duration_s)]
+
+
+class TranscriptLine(BaseModel):
+    start_s: int | None
+    text: str
+
+
+@router.get("/{youtube_id}/transcript", response_model=list[TranscriptLine])
+@limiter.limit("60/minute")
+async def transcript(request: Request, db: DB, user: CurrentUser, youtube_id: YoutubeId):
+    """Admin-curated transcript; 404 when the video has none."""
+    v = await db.scalar(select(Video).where(Video.youtube_id == youtube_id))
+    if v is None or not (v.transcript or "").strip():
+        raise HTTPException(404, "No transcript for this video")
+    return [TranscriptLine(**ln) for ln in service.parse_transcript(v.transcript)]
+
+
+class SummaryIn(BaseModel):
+    start_s: float | None = Field(default=None, ge=0)
+    end_s: float | None = Field(default=None, ge=0)
+    label: str = Field(default="", max_length=160)
+    model: str | None = Field(default=None, max_length=60)
+    conversation_id: uuid.UUID | None = None
+
+
+class SummaryOut(BaseModel):
+    summary: str
+
+
+SUMMARY_SYSTEM = (
+    "You summarise part of a video transcript for a learner. Write 2-5 short plain "
+    "sentences covering the key points, in the transcript's language. Use only the "
+    "transcript; if it is too short or unclear, say so briefly."
+)
+SUMMARY_SCHEMA = {
+    "type": "object",
+    "properties": {"summary": {"type": "string"}},
+    "required": ["summary"],
+}
+
+
+@router.post("/{youtube_id}/summary", response_model=SummaryOut)
+@limiter.limit("10/minute")
+async def summary(
+    request: Request, body: SummaryIn, db: DB, user: CurrentUser, youtube_id: YoutubeId
+):
+    """Summarise the transcript (or one part of it) with the local model. When a
+    conversation is given, the request and answer are saved in it."""
+    s = get_settings()
+    model = body.model or s.default_model
+    if model not in s.allowed_models:
+        raise HTTPException(422, "Model not allowed")
+    v = await db.scalar(select(Video).where(Video.youtube_id == youtube_id))
+    if v is None or not (v.transcript or "").strip():
+        raise HTTPException(404, "No transcript for this video")
+    conv = None
+    if body.conversation_id is not None:
+        conv = await db.get(Conversation, body.conversation_id)
+        if conv is None or conv.user_id != user.id:
+            raise HTTPException(404, "Conversation not found")
+    excerpt = service.transcript_excerpt(service.parse_transcript(v.transcript), body.start_s, body.end_s)
+    if len(excerpt) < 40:
+        raise HTTPException(422, "Not enough transcript for that part")
+    data = await ollama.chat_json(
+        model,
+        [
+            {"role": "system", "content": SUMMARY_SYSTEM},
+            {"role": "user", "content": f"Video: {v.title}\nTranscript excerpt:\n{excerpt}"},
+        ],
+        SUMMARY_SCHEMA,
+        num_predict=400,
+    )
+    # LLM output is untrusted: plain text, length-limited.
+    text = " ".join(str((data or {}).get("summary") or "").split())[:1500]
+    if not text:
+        raise HTTPException(503, "The AI model is offline; try again later")
+    if conv is not None:
+        label = body.label.strip() or v.title
+        db.add(Message(conversation_id=conv.id, role="user", content=f"Summarize “{label}”"))
+        db.add(Message(conversation_id=conv.id, role="assistant", content=text))
+        conv.updated_at = func.now()
+        await db.commit()
+    return SummaryOut(summary=text)
 
 
 @router.post("/{youtube_id}/watched", status_code=204)

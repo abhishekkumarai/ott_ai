@@ -21,6 +21,13 @@ class AdminVideo(BaseModel):
     duration_s: int
     source: str
     has_embedding: bool
+    has_chapters: bool = False
+    has_transcript: bool = False
+
+
+class AdminVideoDetail(AdminVideo):
+    chapters_text: str
+    transcript: str
 
 
 class VideoIn(BaseModel):
@@ -35,6 +42,9 @@ class VideoPatch(BaseModel):
     topic: str | None = Field(default=None, min_length=1, max_length=100)
     tags: list[Annotated[str, Field(max_length=60)]] | None = Field(default=None, max_length=15)
     title: str | None = Field(default=None, min_length=1, max_length=300)
+    # OTTAI-20: "" clears the field.
+    chapters_text: str | None = Field(default=None, max_length=20_000)
+    transcript: str | None = Field(default=None, max_length=200_000)
 
 
 class Page(BaseModel):
@@ -52,6 +62,18 @@ def _out(v: Video) -> AdminVideo:
         duration_s=v.duration_s,
         source=v.source,
         has_embedding=v.embedding is not None,
+        has_chapters=bool((v.chapters_text or "").strip()),
+        has_transcript=bool((v.transcript or "").strip()),
+    )
+
+
+@router.get("/videos/{youtube_id}", response_model=AdminVideoDetail)
+async def get_video(youtube_id: YoutubeId, db: DB, admin: AdminUser):
+    v = await db.scalar(select(Video).where(Video.youtube_id == youtube_id))
+    if v is None:
+        raise HTTPException(404, "Not found")
+    return AdminVideoDetail(
+        **_out(v).model_dump(), chapters_text=v.chapters_text or "", transcript=v.transcript or ""
     )
 
 
@@ -109,7 +131,19 @@ async def edit_video(youtube_id: YoutubeId, body: VideoPatch, db: DB, admin: Adm
         "tags": body.tags if body.tags is not None else v.tags,
         "topic": body.topic or v.topic,
     }
+    if body.chapters_text is not None and body.chapters_text.strip():
+        if not service.parse_chapters(body.chapters_text, v.duration_s):
+            raise HTTPException(
+                422,
+                "Chapters need at least 3 lines like \"0:00 Intro\", starting at 0:00, "
+                "in increasing order and within the video's length",
+            )
     (video,) = await service.upsert_videos(db, [item], source="curated")
+    if body.chapters_text is not None:
+        video.chapters_text = body.chapters_text.strip() or None
+    if body.transcript is not None:
+        video.transcript = body.transcript.strip() or None
+    await db.commit()
     await db.refresh(video)
     return _out(video)
 

@@ -106,7 +106,30 @@
       <td class="px-3 py-2"><span data-f="source" class="badge"></span></td>
       <td class="whitespace-nowrap px-3 py-2 text-right">
         <button data-a="save" class="btn btn-outline btn-sm" type="button">Save</button>
+        <button data-a="extra" class="btn btn-outline btn-sm" type="button" aria-expanded="false">Chapters &amp; transcript</button>
         <button data-a="del" class="btn btn-ghost btn-sm text-destructive" type="button">Delete</button>
+      </td>
+    </tr>
+  </template>
+
+  <!-- Chapters / transcript editor, shown under a row (OTTAI-20) -->
+  <template id="extra-tpl">
+    <tr class="bg-muted/30">
+      <td colspan="7" class="px-3 py-3">
+        <div class="grid gap-3 lg:grid-cols-2">
+          <div class="space-y-1.5">
+            <label class="label">Chapters <span class="font-normal text-muted-foreground">(one per line: “0:00 Intro”; start at 0:00, at least 3)</span></label>
+            <textarea data-f="chapters" class="input h-40 py-2 font-mono text-xs" maxlength="20000" spellcheck="false"></textarea>
+          </div>
+          <div class="space-y-1.5">
+            <label class="label">Transcript <span class="font-normal text-muted-foreground">(“1:15 text” lines are seekable; plain text also works)</span></label>
+            <textarea data-f="transcript" class="input h-40 py-2 font-mono text-xs" maxlength="200000" spellcheck="false"></textarea>
+          </div>
+        </div>
+        <div class="mt-2 flex items-center gap-3">
+          <button data-a="save-extra" class="btn btn-primary btn-sm" type="button">Save chapters &amp; transcript</button>
+          <p data-f="extra-msg" class="text-sm text-muted-foreground" role="status"></p>
+        </div>
       </td>
     </tr>
   </template>

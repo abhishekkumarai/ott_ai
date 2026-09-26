@@ -442,6 +442,55 @@ class ChatController extends Notifier<ChatState> {
     }
   }
 
+  /// "Summarize this part" (OTTAI-20): the local model summarises the transcript
+  /// between [start] and [end]; the exchange is saved in the chat.
+  Future<void> summarize({
+    required Video video,
+    double? start,
+    double? end,
+    required String label,
+  }) async {
+    if (state.sending) return;
+    state = state.copyWith(
+      messages: [
+        ...state.messages,
+        ChatMessage(role: Role.user, text: 'Summarize “$label”'),
+      ],
+      sending: true,
+      error: null,
+    );
+    try {
+      final data =
+          await _api.post('/videos/${video.youtubeId}/summary', {
+                'start_s': ?start,
+                'end_s': ?end,
+                'label': label,
+                'model': ?state.model,
+                'conversation_id': ?state.conversationId,
+              })
+              as Map<String, dynamic>;
+      if (!ref.mounted) return;
+      state = state.copyWith(
+        messages: [
+          ...state.messages,
+          ChatMessage(
+            role: Role.assistant,
+            text: data['summary'] as String? ?? '',
+          ),
+        ],
+        sending: false,
+      );
+    } on ApiException catch (e) {
+      if (!ref.mounted) return;
+      state = state.copyWith(
+        // Drop the request line again so the chat doesn't show an unanswered ask.
+        messages: state.messages.sublist(0, state.messages.length - 1),
+        sending: false,
+        error: e.message,
+      );
+    }
+  }
+
   // ---------------------------------------------------------------- player
   void apply(PlayerAction a) {
     if (!state.playerOpen) return;

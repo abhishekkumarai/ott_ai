@@ -98,6 +98,10 @@ class Video(Base):
     source: Mapped[str] = mapped_column(String(10), default="curated", nullable=False)
     embeddable: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBED_DIM))
+    # Curated by admins (OTTAI-20): chapter lines ("0:00 Intro") that override the
+    # description's, and a transcript (optionally "m:ss text" lines).
+    chapters_text: Mapped[str | None] = mapped_column(Text)
+    transcript: Mapped[str | None] = mapped_column(Text)
     tsv: Mapped[str] = mapped_column(
         TSVECTOR,
         Computed(

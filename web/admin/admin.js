@@ -113,6 +113,10 @@
     f('tags').value = v.tags.join(', ');
     f('dur').textContent = fmt(v.duration_s);
     f('source').textContent = v.source === 'curated' ? 'Curated' : 'Search';
+    var extraBtn = tr.querySelector('[data-a="extra"]');
+    var marks = [v.has_chapters ? 'chapters' : '', v.has_transcript ? 'transcript' : ''].filter(Boolean);
+    if (marks.length) extraBtn.title = 'Has ' + marks.join(' and ');
+    extraBtn.addEventListener('click', function () { toggleExtra(tr, v, extraBtn); });
     tr.querySelector('[data-a="save"]').addEventListener('click', async function (e) {
       var btn = e.currentTarget;
       btn.disabled = true;
@@ -142,6 +146,50 @@
       await load();
     });
     return tr;
+  }
+
+  // Chapters & transcript editor row (OTTAI-20).
+  async function toggleExtra(tr, v, btn) {
+    var next = tr.nextElementSibling;
+    if (next && next.dataset.extraFor === v.youtube_id) {
+      next.remove();
+      btn.setAttribute('aria-expanded', 'false');
+      return;
+    }
+    var er = $('extra-tpl').content.firstElementChild.cloneNode(true);
+    er.dataset.extraFor = v.youtube_id;
+    var g = function (name) { return er.querySelector('[data-f="' + name + '"]'); };
+    tr.after(er);
+    btn.setAttribute('aria-expanded', 'true');
+    var msg = g('extra-msg');
+    msg.textContent = 'Loading…';
+    try {
+      var d = await api('/admin/videos/' + v.youtube_id);
+      g('chapters').value = d.chapters_text;
+      g('transcript').value = d.transcript;
+      msg.textContent = '';
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = 'text-sm text-destructive';
+    }
+    er.querySelector('[data-a="save-extra"]').addEventListener('click', async function (e) {
+      var b = e.currentTarget;
+      b.disabled = true;
+      msg.className = 'text-sm text-muted-foreground';
+      msg.textContent = 'Saving…';
+      try {
+        await api('/admin/videos/' + v.youtube_id, {
+          method: 'PATCH',
+          body: { chapters_text: g('chapters').value, transcript: g('transcript').value }
+        });
+        msg.textContent = 'Saved.';
+      } catch (err) {
+        msg.textContent = err.message;
+        msg.className = 'text-sm text-destructive';
+      } finally {
+        b.disabled = false;
+      }
+    });
   }
 
   $('login-form').addEventListener('submit', async function (e) {

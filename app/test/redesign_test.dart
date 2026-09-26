@@ -14,6 +14,7 @@ import 'package:ott_ai/chat/reply.dart';
 import 'package:ott_ai/chat/widgets.dart';
 import 'package:ott_ai/widgets/tappable.dart';
 import 'package:ott_ai/library/saved.dart';
+import 'package:ott_ai/player/transcript.dart';
 import 'package:ott_ai/player/player_handle.dart';
 import 'package:ott_ai/settings/preferences.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -411,6 +412,64 @@ void main() {
       expect(c.read(savedProvider.notifier).isSaved('bbbbbbbbbbb'), isTrue);
       expect(PlayerAction.fromJson({'type': 'save'})!.type, ActionType.save);
     });
+  });
+
+  group('transcripts and summaries (OTTAI-20)', () {
+    late ProviderContainer c;
+    late FakeApi api;
+
+    setUp(() {
+      api = FakeApi();
+      c = ProviderContainer(overrides: [apiProvider.overrideWithValue(api)]);
+      c.read(playerHandleProvider).attach(RecordingTransport());
+    });
+    tearDown(() => c.dispose());
+
+    test('transcript lines keep optional timestamps', () {
+      final a = TranscriptLine.fromJson({'start_s': 75, 'text': 'Stars'});
+      final b = TranscriptLine.fromJson({'start_s': null, 'text': 'plain'});
+      expect((a.start, a.text), (75.0, 'Stars'));
+      expect(b.start, isNull);
+    });
+
+    test('summarize adds the request and the answer', () async {
+      Object? body;
+      api.onPost = (path, b) {
+        expect(path, '/videos/aaaaaaaaaaa/summary');
+        body = b;
+        return {'summary': 'Stars collapse when fuel runs out.'};
+      };
+      await c
+          .read(chatProvider.notifier)
+          .summarize(
+            video: Video.fromJson(_v('aaaaaaaaaaa')),
+            start: 60,
+            end: 180,
+            label: 'Stars',
+          );
+      final msgs = c.read(chatProvider).messages;
+      expect(msgs.map((m) => m.text), [
+        'Summarize “Stars”',
+        'Stars collapse when fuel runs out.',
+      ]);
+      expect(body, containsPair('start_s', 60.0));
+      expect(body, containsPair('end_s', 180.0));
+      expect(c.read(chatProvider).sending, isFalse);
+    });
+
+    test(
+      'a failed summary shows the error and leaves no dangling request',
+      () async {
+        api.onPost = (_, _) => throw ApiException('The AI model is offline');
+        await c
+            .read(chatProvider.notifier)
+            .summarize(video: Video.fromJson(_v('aaaaaaaaaaa')), label: 'All');
+        final s = c.read(chatProvider);
+        expect(s.messages, isEmpty);
+        expect(s.error, 'The AI model is offline');
+        expect(s.sending, isFalse);
+      },
+    );
   });
 
   group('collapse persistence (OTTAI-18)', () {

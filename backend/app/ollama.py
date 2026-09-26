@@ -54,7 +54,9 @@ async def installed_models() -> set[str]:
         return set()
 
 
-async def chat_json(model: str, messages: list[dict], schema: dict) -> dict | None:
+async def chat_json(
+    model: str, messages: list[dict], schema: dict, num_predict: int = 200
+) -> dict | None:
     try:
         r = await client().post(
             "/api/chat",
@@ -65,7 +67,7 @@ async def chat_json(model: str, messages: list[dict], schema: dict) -> dict | No
                 "stream": False,
                 "think": False,
                 "keep_alive": "30m",
-                "options": {"temperature": 0.3, "num_predict": 200},
+                "options": {"temperature": 0.3, "num_predict": num_predict},
             },
         )
         r.raise_for_status()
