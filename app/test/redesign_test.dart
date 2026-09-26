@@ -123,9 +123,27 @@ void main() {
         'action': null,
         'source': 'catalog',
       };
-      await c.read(chatProvider.notifier).send('black holes');
+      final chat = c.read(chatProvider.notifier);
+      await chat.send('black holes');
+      // Replies don't autoplay; these tests start the top result like a user.
+      final reply = c.read(chatProvider).messages.last;
+      if (reply.videos.isNotEmpty) chat.play(reply.videos.first);
       await Future<void>.delayed(Duration.zero);
     }
+
+    test('a reply with videos does not start playing by itself', () async {
+      api.onChat = (_) => {
+        'conversation_id': 'c1',
+        'reply': 'Here you go.',
+        'videos': [_v('aaaaaaaaaaa'), _v('bbbbbbbbbbb')],
+        'action': null,
+        'source': 'catalog',
+      };
+      await c.read(chatProvider.notifier).send('black holes');
+      expect(c.read(chatProvider).nowPlaying, isNull);
+      expect(transport.calls, isEmpty);
+      expect(c.read(chatProvider).messages.last.videos.length, 2);
+    });
 
     test(
       'reply keeps only real highlights and records latency + source',

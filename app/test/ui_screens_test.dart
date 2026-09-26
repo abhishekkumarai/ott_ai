@@ -167,9 +167,10 @@ void main() {
         if (scenario != 'empty') {
           await chat.send('show me how black holes form');
           await tester.pumpAndSettle();
-          if (scenario == 'chat') {
-            chat.stopFromUi();
-          } else {
+          // Replies don't autoplay; "chat" shows the suggestions as they arrive.
+          if (scenario != 'chat') {
+            chat.play(container.read(chatProvider).messages.last.videos.first);
+            await tester.pumpAndSettle();
             container
                 .read(playbackProvider.notifier)
                 .set(const Playback(t: 83, d: 612, playing: true));

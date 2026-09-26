@@ -342,8 +342,8 @@ class _EmptyState extends ConsumerWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Ask about any topic. I’ll find a free video, play it right here, '
-                'and pull out the key moments.',
+                'Ask about any topic. I’ll find free videos with their key '
+                'moments; pick one to play it right here.',
                 style: theme.textTheme.muted.copyWith(fontSize: 15),
               ),
               const SizedBox(height: 20),

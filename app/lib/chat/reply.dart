@@ -309,8 +309,9 @@ class LoopButton extends ConsumerWidget {
 
 // ------------------------------------------------------------------ collapsible
 
-/// A block that folds to one line (OTTAI-6/7). Only the live reply's blocks start
-/// open; a manual toggle is remembered for the session.
+/// A block that folds to one line (OTTAI-6/7). Blocks start closed (the header
+/// still shows a summary); a block the user opens or closes stays that way, also
+/// across restarts (OTTAI-18).
 class CollapsibleBlock extends ConsumerStatefulWidget {
   const CollapsibleBlock({
     super.key,
@@ -428,9 +429,6 @@ class KeyMoments extends ConsumerWidget {
     final chapters = ref.watch(chaptersProvider(video.youtubeId)).value;
     if (chapters == null || chapters.isEmpty) return const SizedBox.shrink();
     final theme = ShadTheme.of(context);
-    final isLive = ref.watch(
-      chatProvider.select((s) => s.activeReplyIndex == replyIndex),
-    );
     final playing = ref.watch(
       chatProvider.select((s) => s.nowPlaying?.youtubeId == video.youtubeId),
     );
@@ -440,7 +438,7 @@ class KeyMoments extends ConsumerWidget {
 
     return CollapsibleBlock(
       stateKey: _blockKey(ref, replyIndex, 'moments'),
-      defaultOpen: isLive,
+      defaultOpen: false,
       title: Row(
         children: [
           Icon(LucideIcons.listVideo, size: 15, color: coralOn(context)),
@@ -584,13 +582,12 @@ class _AlternativesState extends ConsumerState<Alternatives> {
     if (widget.replyIndex >= s.messages.length) return const SizedBox.shrink();
     final all = s.alternativesFor(widget.replyIndex);
     if (all.isEmpty) return const SizedBox.shrink();
-    final isLive = s.activeReplyIndex == widget.replyIndex;
     final chat = ref.read(chatProvider.notifier);
     final shown = _all ? all : all.take(3).toList();
 
     return CollapsibleBlock(
       stateKey: _blockKey(ref, widget.replyIndex, 'alternatives'),
-      defaultOpen: isLive,
+      defaultOpen: false,
       title: Row(
         children: [
           Icon(LucideIcons.layers, size: 15, color: coralOn(context)),

@@ -119,8 +119,8 @@ final collapseStoreProvider = Provider<CollapseStore>(
 );
 
 /// Open/closed state of collapsible blocks the user toggled by hand, keyed by
-/// "conversation:message:block". Untouched blocks follow the default (only the
-/// latest reply open). Saved on the device, so reopening a chat — even after a
+/// "conversation:message:block". Untouched blocks start closed. Saved on the
+/// device, so reopening a chat — even after a
 /// restart — restores it. Unsaved ("new") chats aren't stored.
 class CollapseController extends Notifier<Map<String, bool>> {
   /// Most recent toggles kept on disk.
@@ -435,11 +435,8 @@ class ChatController extends Notifier<ChatState> {
         ],
         sending: false,
       );
-      if (action != null) {
-        apply(action);
-      } else if (videos.isNotEmpty) {
-        play(videos.first);
-      }
+      // Replies only suggest videos; the user picks what to play.
+      if (action != null) apply(action);
     } on ApiException catch (e) {
       if (ref.mounted) state = state.copyWith(sending: false, error: e.message);
     }

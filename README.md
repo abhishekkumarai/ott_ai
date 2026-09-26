@@ -1,6 +1,6 @@
 # OTT-AI — a video chatbot
 
-Ask about a topic, and a free YouTube video plays right in the chat, with its key moments and alternatives.
+Ask about a topic and get free YouTube videos in the chat; pick one to play it right there, with its key moments and alternatives.
 Control playback by typing, speaking or using the keyboard:
 
 | Say / type | Effect |

@@ -177,7 +177,7 @@ void main() {
     tearDown(() => c.dispose());
 
     test(
-      'topic reply opens the first video; forward keeps playing; stop closes',
+      'topic reply suggests videos without playing; play, forward, stop',
       () async {
         final chat = c.read(chatProvider.notifier);
         api.onChat = (b) => {
@@ -191,6 +191,10 @@ void main() {
           'source': 'catalog',
         };
         await chat.send('sourdough bread');
+        // Nothing starts on its own: the user picks from the suggestions.
+        expect(c.read(chatProvider).nowPlaying, isNull);
+        expect(transport.calls, isEmpty);
+        chat.play(c.read(chatProvider).messages.last.videos.first);
         expect(c.read(chatProvider).nowPlaying?.youtubeId, 'aaaaaaaaaaa');
         expect(transport.calls, contains('load:aaaaaaaaaaa'));
         await Future<void>.delayed(Duration.zero);
