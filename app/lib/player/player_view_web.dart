@@ -61,13 +61,28 @@ class _PlayerViewState extends State<PlayerView> implements PlayerTransport {
   }
 
   @override
-  void send(String cmd, {String? id, double? start, double? seconds}) {
+  void send(
+    String cmd, {
+    String? id,
+    double? start,
+    double? end,
+    double? seconds,
+    double? value,
+  }) {
+    if (cmd == 'fullscreen') {
+      // The app page (which has the click's user activation) fullscreens the
+      // iframe; the iframe already allows fullscreen. Esc leaves it.
+      _iframe?.requestFullscreen();
+      return;
+    }
     final msg = <String, Object?>{
       'target': 'ott-player',
       'cmd': cmd,
       'id': ?id,
       'start': ?start,
+      'end': ?end,
       'seconds': ?seconds,
+      'value': ?value,
     };
     _iframe?.contentWindow?.postMessage(msg.jsify(), _origin.toJS);
   }

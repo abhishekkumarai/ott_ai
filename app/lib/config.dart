@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 ///
 /// Web builds are served by that same origin. Native builds default to the Android
 /// emulator's host alias or localhost, and can be pointed elsewhere with
-/// `--dart-define=API_BASE=https://reel.example.com`.
+/// `--dart-define=API_BASE=https://ott-ai.example.com`.
 class AppConfig {
   static const _override = String.fromEnvironment('API_BASE');
 

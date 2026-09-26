@@ -103,7 +103,7 @@ async def test_chat_commands(client):
     h = auth(tok)
     r = await client.post("/api/chat", json={"message": "forward 25 sec", "player_open": True}, headers=h)
     body = r.json()
-    assert body["action"] == {"type": "seek", "seconds": 25}
+    assert body["action"] == {"type": "seek", "seconds": 25, "start": None, "end": None}
     cid = body["conversation_id"]
     r = await client.post(
         "/api/chat",

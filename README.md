@@ -1,6 +1,6 @@
-# Reel — a video chatbot
+# OTT-AI — a video chatbot
 
-Ask about a topic, and a free YouTube video plays inside the chat overlay, with related videos in a side panel.
+Ask about a topic, and a free YouTube video plays right in the chat, with its key moments and alternatives.
 Control playback by typing, speaking or using the keyboard:
 
 | Say / type | Effect |
@@ -10,8 +10,19 @@ Control playback by typing, speaking or using the keyboard:
 | `pause` / `play` | pause / resume |
 | `next` | play the top recommendation |
 | `stop` | close the video, back to chat (“Stopped at m:ss”) |
+| `loop this part`, `loop 3:40 to 5:10` | repeat the current chapter (or a range) |
+| `stop looping` | end the loop |
+| `mute` / `unmute` | sound off / on |
+| `save this` | add the playing video to your library (sidebar › Saved) |
 
-Keys while the command box is empty: `→` / `←` seek, `Esc` stops.
+Videos play in a floating **mini player** so the chat stays in front; **theater mode** gives a large player.
+Replies show the video's **key moments** (chapters from the description; click to seek) and **alternatives**
+with a match %. Save videos to a per-user library (sidebar › Saved). Settings (model, player mode, playback,
+voice, appearance, account) are saved per user; which reply blocks you collapsed is remembered on the device.
+
+Keyboard (when not typing): `Space` play/pause · `M` mute · `←`/`→` seek · `N` next · `I` mini player ·
+`T` theater · `F` fullscreen (web) · `Esc` stop · `Ctrl/⌘+K` search · `Ctrl/⌘+N` new session · `?` all shortcuts.
+In an empty message box `←`/`→` still seek and `Esc` still stops.
 
 No paid services. Chat understanding runs on local **Ollama**; search is Postgres full-text + **pgvector** embeddings (`nomic-embed-text`); the YouTube Data API (free quota) is only a fallback, and its results are cached into the catalog.
 
@@ -67,7 +78,7 @@ cd backend && python -m venv .venv && .venv/Scripts/pip install -r requirements-
 .venv/Scripts/python -m pytest              # uses the separate ott_ai_db_test database
 .venv/Scripts/bandit -r app && .venv/Scripts/pip-audit -r requirements.txt
 cd ../app && flutter analyze && flutter test
-cd ../web && npm ci && npm run build        # Tailwind CSS
+cd ../web && corepack pnpm install && corepack pnpm run build   # Tailwind CSS (pnpm via corepack)
 python -m seed.build_catalog                # (backend/) rebuild catalog.json from the API (~2.5k quota units)
 ```
 

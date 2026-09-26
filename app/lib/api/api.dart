@@ -49,12 +49,19 @@ class ApiClient {
               return handler.next(e);
             }
           }
-          if (err.response?.statusCode == 401) onSessionExpired?.call();
+          if (sessionExpired(req.path, err.response?.statusCode)) {
+            onSessionExpired?.call();
+          }
           handler.next(err);
         },
       ),
     );
   }
+
+  /// A 401 means the session is gone — except on /auth/* calls, where it means
+  /// the credentials in that request were wrong (login, password re-entry).
+  static bool sessionExpired(String path, int? status) =>
+      status == 401 && !path.startsWith('/auth/');
 
   late final Dio _dio;
   final TokenStore _store;
@@ -83,7 +90,7 @@ class ApiClient {
         '/auth/refresh',
         data: {'refresh_token': ?stored},
       );
-      return _session(Map<String, dynamic>.from(r.data as Map));
+      return await _session(Map<String, dynamic>.from(r.data as Map));
     } on DioException {
       accessToken = null;
       await _store.clear();
@@ -125,7 +132,32 @@ class ApiClient {
   Future<dynamic> post(String path, [Object? body]) =>
       _wrap(() => _dio.post(path, data: body));
 
-  Future<dynamic> delete(String path) => _wrap(() => _dio.delete(path));
+  Future<dynamic> patch(String path, [Object? body]) =>
+      _wrap(() => _dio.patch(path, data: body));
+
+  Future<dynamic> put(String path, [Object? body]) =>
+      _wrap(() => _dio.put(path, data: body));
+
+  Future<dynamic> delete(String path, [Object? body]) =>
+      _wrap(() => _dio.delete(path, data: body));
+
+  /// Other sessions are revoked server-side; this one continues with fresh tokens.
+  Future<Map<String, dynamic>> changePassword(
+    String current,
+    String next,
+  ) async {
+    final data = await post('/auth/change-password', {
+      'current_password': current,
+      'new_password': next,
+    });
+    return _session(Map<String, dynamic>.from(data as Map));
+  }
+
+  Future<void> deleteAccount(String password) async {
+    await delete('/auth/account', {'password': password});
+    accessToken = null;
+    await _store.clear();
+  }
 
   Future<dynamic> _wrap(Future<Response> Function() call) async {
     try {

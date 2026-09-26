@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.ottai" "\0"
-            VALUE "FileDescription", "reel" "\0"
+            VALUE "FileDescription", "OTT-AI" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "reel" "\0"
+            VALUE "InternalName", "ott_ai" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.ottai. All rights reserved." "\0"
-            VALUE "OriginalFilename", "reel.exe" "\0"
-            VALUE "ProductName", "reel" "\0"
+            VALUE "OriginalFilename", "ott_ai.exe" "\0"
+            VALUE "ProductName", "OTT-AI" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

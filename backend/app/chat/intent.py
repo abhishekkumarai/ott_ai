@@ -9,7 +9,9 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-Action = Literal["seek", "pause", "play", "stop", "next"]
+from app.timecode import stamp_seconds
+
+Action = Literal["seek", "pause", "play", "stop", "next", "loop", "unloop", "mute", "unmute", "save"]
 DEFAULT_SEEK = 25
 MAX_COMMAND_WORDS = 8
 
@@ -36,7 +38,16 @@ _BACK = re.compile(
     rf"^(?:(?:please|now|ok|okay)\s+)*(?:go\s+|move\s+|jump\s+|skip\s+)?"
     rf"(?:back|backward|backwards|rewind|reverse)\s*{_AMOUNT}(?:\s+back)?$"
 )
+_STAMP = r"(\d{1,2}(?::\d{2}){1,2})"
+_LOOP_RANGE = re.compile(
+    rf"^(?:please\s+)?(?:loop|repeat)\s+(?:from\s+)?{_STAMP}\s+(?:to|till|until|-)\s+{_STAMP}$"
+)
 _SIMPLE: list[tuple[re.Pattern[str], Action]] = [
+    (re.compile(r"^(?:please\s+)?(?:save|bookmark|keep)\s+(?:this|that|it)(?:\s+(?:video|one|lesson))?(?:\s+for\s+later)?$"), "save"),
+    (re.compile(r"^(?:please\s+)?(?:stop|end|cancel)\s+(?:the\s+)?(?:loop|looping|repeating|repeat)$|^unloop$"), "unloop"),
+    (re.compile(r"^(?:please\s+)?(?:loop|repeat)(?:\s+(?:this|that|it))?(?:\s+(?:part|section|bit|chapter))?$"), "loop"),
+    (re.compile(r"^(?:please\s+)?unmute(?:\s+(?:the\s+)?(?:video|it|sound))?$|^sound\s+on$"), "unmute"),
+    (re.compile(r"^(?:please\s+)?mute(?:\s+(?:the\s+)?(?:video|it|sound))?$|^sound\s+off$"), "mute"),
     (re.compile(r"^(?:please\s+)?(?:stop|close|exit|quit|end)(?:\s+(?:the\s+)?(?:video|it|playing|playback|watching))?$"), "stop"),
     (re.compile(r"^(?:back\s+to\s+(?:the\s+)?chat|that'?s\s+enough|i'?m\s+done)$"), "stop"),
     (re.compile(r"^(?:please\s+)?(?:pause|hold(?:\s+on)?|wait)(?:\s+(?:the\s+)?(?:video|it))?$"), "pause"),
@@ -49,12 +60,15 @@ _SIMPLE: list[tuple[re.Pattern[str], Action]] = [
 class Command:
     action: Action
     seconds: float = 0.0
+    # loop range in seconds (None = "this part": the app picks the current chapter)
+    start: float | None = None
+    end: float | None = None
 
 
 def _normalize(text: str) -> str:
     t = text.lower().strip()
-    t = re.sub(r"[^\w\s'.-]", " ", t)
-    t = re.sub(r"\.(?!\d)", " ", t)
+    t = re.sub(r"[^\w\s'.:-]", " ", t)  # ':' kept for time stamps ("loop 3:40 to 5:10")
+    t = re.sub(r"\.(?!\d)|(?<!\d):|:(?!\d)", " ", t)
     return re.sub(r"\s+", " ", t).strip()
 
 
@@ -85,6 +99,11 @@ def _amount(m: re.Match[str]) -> float:
 def parse_command(text: str) -> Command | None:
     t = _normalize(text)
     if not t or len(t.split()) > MAX_COMMAND_WORDS:
+        return None
+    if m := _LOOP_RANGE.fullmatch(t):
+        a, b = float(stamp_seconds(m.group(1))), float(stamp_seconds(m.group(2)))
+        if b > a:
+            return Command("loop", start=a, end=b)
         return None
     for pattern, action in _SIMPLE:
         if pattern.fullmatch(t):

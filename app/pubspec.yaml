@@ -1,5 +1,5 @@
-name: reel
-description: "A new Flutter project."
+name: ott_ai
+description: "OTT-AI: ask about a topic and watch a free video in the chat."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -42,6 +42,7 @@ dependencies:
   flutter_inappwebview: ^6.1.5
   speech_to_text: ^7.5.0
   web: ^1.1.1
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:
@@ -95,6 +96,26 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+  # Bundled (not fetched at runtime) so native builds work offline. Latin subsets,
+  # SIL OFL 1.1 — licenses next to the files.
+  fonts:
+    - family: Plus Jakarta Sans
+      fonts:
+        - asset: assets/fonts/PlusJakartaSans-400.ttf
+        - asset: assets/fonts/PlusJakartaSans-500.ttf
+          weight: 500
+        - asset: assets/fonts/PlusJakartaSans-600.ttf
+          weight: 600
+        - asset: assets/fonts/PlusJakartaSans-700.ttf
+          weight: 700
+    - family: JetBrains Mono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-400.ttf
+        - asset: assets/fonts/JetBrainsMono-500.ttf
+          weight: 500
+        - asset: assets/fonts/JetBrainsMono-600.ttf
+          weight: 600
 
 dependency_overrides:
   # Patched for current Android Gradle Plugin; see third_party/README.md

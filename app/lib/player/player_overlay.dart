@@ -2,30 +2,30 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../chat/chat_controller.dart';
 import '../chat/models.dart';
+import '../chat/quick_actions.dart';
+import '../chat/reply.dart';
 import '../chat/widgets.dart';
+import '../settings/preferences.dart';
 import '../shell/recommendations.dart';
 import '../theme.dart';
+import 'player_controls.dart';
 import 'player_handle.dart';
 
-/// Covers the chat area while a video plays. Chat/voice commands keep working here.
+/// Theater mode: the large player over the chat area. Chat/voice commands keep
+/// working here; keyboard shortcuts are handled app-wide (shell/shortcuts.dart).
 class PlayerOverlay extends ConsumerStatefulWidget {
-  const PlayerOverlay({super.key, this.inlineRecommendations = true});
-
-  /// Show "Up next" as a strip under the player (when there is no right panel).
-  final bool inlineRecommendations;
+  const PlayerOverlay({super.key});
 
   @override
   ConsumerState<PlayerOverlay> createState() => _PlayerOverlayState();
 }
 
 class _PlayerOverlayState extends ConsumerState<PlayerOverlay> {
-  final _focus = FocusNode(debugLabel: 'player-shortcuts');
   final _composerFocus = FocusNode(debugLabel: 'player-composer');
   StreamSubscription<PlayerEvent>? _sub;
 
@@ -40,73 +40,38 @@ class _PlayerOverlayState extends ConsumerState<PlayerOverlay> {
   @override
   void dispose() {
     _sub?.cancel();
-    _focus.dispose();
     _composerFocus.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final chat = ref.read(chatProvider.notifier);
     final video = ref.watch(chatProvider.select((s) => s.nowPlaying));
     if (video == null) return const SizedBox.shrink();
     final cs = ShadTheme.of(context).colorScheme;
-
-    // Player shortcuts only when the player area itself has focus. Keys typed in the
-    // command box are never consumed here (returning `ignored` lets them through).
-    KeyEventResult onKey(FocusNode node, KeyEvent e) {
-      if (!node.hasPrimaryFocus || e is KeyUpEvent) {
-        return KeyEventResult.ignored;
-      }
-      final action = switch (e.logicalKey) {
-        LogicalKeyboardKey.arrowRight => () => chat.forward(seekStep),
-        LogicalKeyboardKey.arrowLeft => () => chat.back(seekStep),
-        LogicalKeyboardKey.space || LogicalKeyboardKey.keyK => chat.togglePause,
-        LogicalKeyboardKey.keyN => chat.next,
-        LogicalKeyboardKey.escape => chat.stopFromUi,
-        _ => null,
-      };
-      if (action == null) return KeyEventResult.ignored;
-      action();
-      return KeyEventResult.handled;
-    }
-
-    return Focus(
-      focusNode: _focus,
-      onKeyEvent: onKey,
-      child: KeyedSubtree(
-        key: const ValueKey('player-overlay'),
-        child: ColoredBox(
-          color: cs.background,
-          child: _Main(
-            video: video,
-            composerFocus: _composerFocus,
-            inlineRecommendations: widget.inlineRecommendations,
-          ),
-        ),
+    return KeyedSubtree(
+      key: const ValueKey('player-overlay'),
+      child: ColoredBox(
+        color: cs.background,
+        child: _Main(video: video, composerFocus: _composerFocus),
       ),
     );
   }
 }
 
 class _Main extends ConsumerWidget {
-  const _Main({
-    required this.video,
-    required this.composerFocus,
-    required this.inlineRecommendations,
-  });
+  const _Main({required this.video, required this.composerFocus});
   final Video video;
   final FocusNode composerFocus;
-  final bool inlineRecommendations;
 
   // Approximate fixed heights used to budget the player (see LayoutBuilder below).
-  static const _controlsH = 56.0;
+  static const _controlsH = 70.0;
   static const _metaH = 52.0;
 
   /// Header (~34) + strip of 176px-wide cards: 16:9 thumb (≈92) + meta (≈58) + padding.
   static const _stripH = 172.0;
   static const _recsH = _stripH + 34;
-  static const _composerH = 72.0;
+  static const _composerH = 110.0;
 
   /// Room for the latest question + reply without clipping the question.
   static const _minTranscriptH = 96.0;
@@ -132,7 +97,7 @@ class _Main extends ConsumerWidget {
         final topPad = compact ? 0.0 : 16.0;
         // Drop optional sections on short screens instead of overflowing.
         final showMeta = c.maxHeight >= 420;
-        final showRecs = inlineRecommendations && c.maxHeight >= 600;
+        final showRecs = c.maxHeight >= 640;
         final fixed =
             topPad +
             _controlsH +
@@ -169,7 +134,7 @@ class _Main extends ConsumerWidget {
                       width: w,
                       height: playerH,
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(compact ? 0 : 10),
+                        borderRadius: BorderRadius.circular(compact ? 0 : 14),
                         child: ref.read(playerViewBuilderProvider)(handle),
                       ),
                     ),
@@ -188,7 +153,10 @@ class _Main extends ConsumerWidget {
                             video.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.large.copyWith(fontSize: 16),
+                            style: theme.textTheme.large.copyWith(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                           Text(
                             video.channel,
@@ -236,10 +204,9 @@ class _Main extends ConsumerWidget {
                           for (final m in recent.reversed)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 10),
-                              child: MessageBubble(
-                                message: m,
-                                showVideos: false,
-                              ),
+                              child: m.role == Role.user
+                                  ? UserBubble(message: m)
+                                  : _AssistantLine(message: m),
                             ),
                         ],
                       ),
@@ -247,13 +214,20 @@ class _Main extends ConsumerWidget {
                   ),
                   Padding(
                     padding: EdgeInsets.fromLTRB(pad, 0, pad, 12),
-                    child: Composer(
-                      autofocus: true,
-                      playerKeys: true,
-                      focusNode: composerFocus,
-                      hint: compact
-                          ? 'Try “forward 25 sec” or “stop”'
-                          : 'Say “forward 25 sec”, “pause”, “next” or “stop”',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const QuickActions(),
+                        const SizedBox(height: 8),
+                        Composer(
+                          autofocus: true,
+                          playerKeys: true,
+                          focusNode: composerFocus,
+                          hint: compact
+                              ? 'Try “forward 25 sec” or “stop”'
+                              : 'Say “forward 25 sec”, “pause”, “loop this part” or “stop”',
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -262,6 +236,40 @@ class _Main extends ConsumerWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Assistant text only (the video blocks live in the chat, behind the player).
+class _AssistantLine extends StatelessWidget {
+  const _AssistantLine({required this.message});
+  final ChatMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = ShadTheme.of(context);
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 3, right: 8),
+            child: Icon(
+              LucideIcons.sparkles,
+              size: 14,
+              color: coralOn(context),
+            ),
+          ),
+          Expanded(
+            child: HighlightedText(
+              message.text,
+              message.highlights,
+              style: theme.textTheme.p.copyWith(height: 1.5, fontSize: 15),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -275,92 +283,88 @@ class _Controls extends ConsumerWidget {
     final cs = theme.colorScheme;
     final p = ref.watch(playbackProvider);
     final chat = ref.read(chatProvider.notifier);
-    final progress = p.d > 0 ? (p.t / p.d).clamp(0.0, 1.0) : 0.0;
+    final narrow = MediaQuery.sizeOf(context).width < mobileBreakpoint;
 
-    Widget btn(IconData icon, String tip, VoidCallback onTap) => ShadTooltip(
-      builder: (_) => Text(tip),
-      child: ShadIconButton.ghost(icon: Icon(icon, size: 18), onPressed: onTap),
-    );
-
-    return Column(
-      children: [
-        const SizedBox(height: 8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(2),
-          child: LinearProgressIndicator(
-            value: progress,
-            minHeight: 3,
-            color: accent,
-            backgroundColor: cs.muted,
-          ),
-        ),
-        Row(
+    return LayoutBuilder(
+      builder: (context, c) {
+        // Optional controls give way before the time readout gets squeezed.
+        final showVolume = !narrow && c.maxWidth >= 560;
+        final showLoop = !narrow && c.maxWidth >= 700;
+        return Column(
           children: [
-            btn(LucideIcons.rewind, 'Back 25s  ←', () => chat.back(seekStep)),
-            btn(
-              p.playing ? LucideIcons.pause : LucideIcons.play,
-              p.playing ? 'Pause  Space' : 'Play  Space',
-              chat.togglePause,
-            ),
-            btn(
-              LucideIcons.fastForward,
-              'Forward 25s  →',
-              () => chat.forward(seekStep),
-            ),
-            btn(LucideIcons.skipForward, 'Next  N', chat.next),
-            const SizedBox(width: 6),
-            Text(
-              '${formatTime(p.t)} / ${formatTime(p.d)}',
-              style: theme.textTheme.small.copyWith(
-                fontFeatures: const [FontFeature.tabularFigures()],
-                color: cs.mutedForeground,
-              ),
-              overflow: TextOverflow.fade,
-              softWrap: false,
-            ),
-            const Spacer(),
-            if (p.muted)
-              ShadButton.outline(
-                size: ShadButtonSize.sm,
-                leading: const Icon(LucideIcons.volumeX, size: 14),
-                onPressed: chat.unmute,
-                child: const Text('Unmute'),
-              ),
-            const SizedBox(width: 4),
-            if (MediaQuery.sizeOf(context).width < mobileBreakpoint)
-              ShadTooltip(
-                builder: (_) => const Text('Stop  Esc'),
-                child: ShadIconButton.ghost(
-                  icon: const Icon(LucideIcons.x, size: 18),
-                  onPressed: chat.stopFromUi,
-                ),
-              )
-            else
-              ShadButton.ghost(
-                size: ShadButtonSize.sm,
-                leading: const Icon(LucideIcons.x, size: 16),
-                onPressed: chat.stopFromUi,
-                child: const Text('Stop'),
-              ),
-          ],
-        ),
-        if (p.error != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Row(
+            const SizedBox(height: 8),
+            const ScrubBar(),
+            Row(
               children: [
-                Expanded(
-                  child: Text(
-                    '${p.error!} Try another one from the list.',
-                    style: theme.textTheme.small.copyWith(
-                      color: cs.destructive,
-                    ),
-                  ),
+                controlButton(
+                  LucideIcons.rewind,
+                  'Back ${seekStep.round()}s  ←',
+                  () => chat.back(seekStep),
                 ),
+                const PlayPauseButton(size: 36),
+                controlButton(
+                  LucideIcons.fastForward,
+                  'Forward ${seekStep.round()}s  →',
+                  () => chat.forward(seekStep),
+                ),
+                controlButton(LucideIcons.skipForward, 'Next  N', chat.next),
+                const SizedBox(width: 6),
+                Text(
+                  '${formatTime(p.t)} / ${formatTime(p.d)}',
+                  style: mono(context, size: 12),
+                ),
+                const Spacer(),
+                if (showVolume) ...[
+                  const VolumeControl(),
+                  const SizedBox(width: 4),
+                ],
+                if (showLoop) ...[
+                  const LoopButton(compact: true),
+                  const SizedBox(width: 4),
+                ],
+                if (canFullscreen)
+                  controlButton(
+                    LucideIcons.fullscreen,
+                    'Fullscreen  F',
+                    chat.fullscreen,
+                  ),
+                controlButton(
+                  LucideIcons.pictureInPicture2,
+                  'Mini player  I',
+                  () => ref
+                      .read(playerModeProvider.notifier)
+                      .set(PlayerMode.mini),
+                ),
+                if (narrow)
+                  controlButton(LucideIcons.x, 'Stop  Esc', chat.stopFromUi)
+                else
+                  ShadButton.ghost(
+                    size: ShadButtonSize.sm,
+                    leading: const Icon(LucideIcons.x, size: 16),
+                    onPressed: chat.stopFromUi,
+                    child: const Text('Stop'),
+                  ),
               ],
             ),
-          ),
-      ],
+            if (p.error != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${p.error!} Try another one from the list.',
+                        style: theme.textTheme.small.copyWith(
+                          color: cs.destructive,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

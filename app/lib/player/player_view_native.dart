@@ -22,10 +22,17 @@ class _PlayerViewState extends State<PlayerView> implements PlayerTransport {
   static const _commands = {
     'load',
     'seekBy',
+    'seekTo',
     'pause',
     'play',
     'stop',
     'unmute',
+    'mute',
+    'setVolume',
+    'setRate',
+    'captions',
+    'loop',
+    'unloop',
   };
   static final _id = RegExp(r'^[A-Za-z0-9_-]{11}$');
   late final Uri _player = Uri.parse(AppConfig.playerUrl);
@@ -37,12 +44,23 @@ class _PlayerViewState extends State<PlayerView> implements PlayerTransport {
   }
 
   @override
-  void send(String cmd, {String? id, double? start, double? seconds}) {
+  void send(
+    String cmd, {
+    String? id,
+    double? start,
+    double? end,
+    double? seconds,
+    double? value,
+  }) {
     if (!_commands.contains(cmd)) return;
     if (id != null && !_id.hasMatch(id)) return;
+    // Only numbers and a validated id are ever interpolated into the script.
     final args = switch (cmd) {
       'load' => '${jsonEncode(id)}, ${jsonEncode(start ?? 0)}',
-      'seekBy' => jsonEncode(seconds ?? 0),
+      'seekBy' || 'seekTo' => jsonEncode(seconds ?? 0),
+      'setVolume' || 'setRate' => jsonEncode(value ?? 0),
+      'captions' => (value ?? 0) == 1 ? 'true' : 'false',
+      'loop' => '${jsonEncode(start ?? 0)}, ${jsonEncode(end ?? 0)}',
       _ => '',
     };
     _controller?.evaluateJavascript(

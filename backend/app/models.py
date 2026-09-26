@@ -13,9 +13,11 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
+    text,
 )
-from sqlalchemy.dialects.postgresql import CITEXT, TSVECTOR, UUID
+from sqlalchemy.dialects.postgresql import CITEXT, JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 EMBED_DIM = 768
@@ -42,6 +44,10 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_demo: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False, index=True
+    )
+    # Validated app settings (see app.account.router.Preferences); unknown keys never stored.
+    preferences: Mapped[dict] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb"), nullable=False
     )
     failed_logins: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -143,4 +149,19 @@ class WatchHistory(Base):
         ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
     youtube_id: Mapped[str] = mapped_column(String(11), nullable=False)
+    created_at: Mapped[datetime] = _created()
+
+
+class SavedVideo(Base):
+    """A user's library ("Save to practice routine")."""
+
+    __tablename__ = "saved_videos"
+    __table_args__ = (UniqueConstraint("user_id", "youtube_id", name="uq_saved_user_video"),)
+    id: Mapped[uuid.UUID] = _uuid()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    youtube_id: Mapped[str] = mapped_column(
+        ForeignKey("videos.youtube_id", ondelete="CASCADE"), nullable=False
+    )
     created_at: Mapped[datetime] = _created()

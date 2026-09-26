@@ -9,6 +9,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app import ollama
 from app.admin.router import router as admin_router
+from app.account.router import router as account_router
 from app.auth.router import router as auth_router
 from app.chat.router import router as chat_router
 from app.config import get_settings
@@ -69,7 +70,7 @@ if origins:
         allow_headers=["Authorization", "Content-Type", "X-Client"],
     )
 
-for r in (auth_router, chat_router, videos_router, admin_router):
+for r in (auth_router, account_router, chat_router, videos_router, admin_router):
     app.include_router(r)
 
 

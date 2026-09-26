@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import ollama
 from app.config import get_settings
 from app.models import Video, WatchHistory, YoutubeQueryCache
+from app.timecode import stamp_seconds
 from app.videos import youtube
 
 log = logging.getLogger("ott_ai.search")
@@ -162,19 +163,40 @@ async def youtube_fallback(db: AsyncSession, query: str, limit: int = 6) -> list
     return videos[:limit]
 
 
-async def find_videos(db: AsyncSession, query: str, limit: int = 6) -> tuple[list[Video], str]:
-    """Catalog first; YouTube API only when the catalog has nothing relevant."""
+def match_percent(similarity: float | None) -> int | None:
+    """Cosine similarity shown as a whole percentage (None when there is no vector)."""
+    if similarity is None or similarity <= 0:
+        return None
+    return max(1, min(99, round(similarity * 100)))
+
+
+async def find_videos_scored(
+    db: AsyncSession, query: str, limit: int = 6
+) -> tuple[list[Video], str, dict[str, int]]:
+    """Like [find_videos], plus a match % per catalog hit (YouTube fallback has none)."""
     hits = await search_catalog(db, query, limit)
     strong = [h for h in hits if h.text_match or h.similarity >= SEMANTIC_MIN]
     if strong:
-        return [h.video for h in strong], "catalog"
+        scores = {
+            h.video.youtube_id: pct
+            for h in strong
+            if (pct := match_percent(h.similarity)) is not None
+        }
+        return [h.video for h in strong], "catalog", scores
     videos = await youtube_fallback(db, query, limit)
-    return videos, "youtube" if videos else "none"
+    return videos, "youtube" if videos else "none", {}
+
+
+async def find_videos(db: AsyncSession, query: str, limit: int = 6) -> tuple[list[Video], str]:
+    """Catalog first; YouTube API only when the catalog has nothing relevant."""
+    videos, source, _ = await find_videos_scored(db, query, limit)
+    return videos, source
 
 
 async def recommendations(
     db: AsyncSession, youtube_id: str, user_id: uuid.UUID | None, limit: int = 8
-) -> list[Video]:
+) -> list[tuple[Video, int | None]]:
+    """Related videos with a match % (cosine similarity to the current video)."""
     current = await db.scalar(select(Video).where(Video.youtube_id == youtube_id))
     if current is None:
         return []
@@ -187,32 +209,61 @@ async def recommendations(
             .limit(20)
         )
         exclude |= set(recent)
-    out: list[Video] = []
+    out: list[tuple[Video, int | None]] = []
     if current.embedding is not None:
-        # Similarity, nudged towards the same topic (raw nomic scores are tightly packed).
-        dist = Video.embedding.cosine_distance(current.embedding) - case(
-            (Video.topic == current.topic, SAME_TOPIC_BONUS), else_=0.0
-        )
-        out = list(
-            await db.scalars(
-                select(Video)
-                .where(
-                    Video.embedding.is_not(None),
-                    Video.embeddable.is_(True),
-                    Video.youtube_id.not_in(exclude),
-                )
-                .order_by(dist)
-                .limit(limit)
+        raw = Video.embedding.cosine_distance(current.embedding)
+        # Ordered by similarity nudged towards the same topic (raw nomic scores are
+        # tightly packed); the match % shown is the plain similarity.
+        dist = raw - case((Video.topic == current.topic, SAME_TOPIC_BONUS), else_=0.0)
+        rows = await db.execute(
+            select(Video, raw.label("d"))
+            .where(
+                Video.embedding.is_not(None),
+                Video.embeddable.is_(True),
+                Video.youtube_id.not_in(exclude),
             )
+            .order_by(dist)
+            .limit(limit)
         )
+        out = [(v, match_percent(1 - d)) for v, d in rows.all()]
     if len(out) < limit and current.topic:
-        have = exclude | {v.youtube_id for v in out}
-        out += list(
-            await db.scalars(
+        have = exclude | {v.youtube_id for v, _ in out}
+        out += [
+            (v, None)
+            for v in await db.scalars(
                 select(Video)
                 .where(Video.topic == current.topic, Video.youtube_id.not_in(have))
                 .order_by(func.random())
                 .limit(limit - len(out))
             )
-        )
+        ]
+    return out
+
+
+# "0:00 Intro", "(1:02:03) Part two", "12:30 - Wrap up"
+_CHAPTER_LINE = re.compile(
+    r"^\s*[\[(]?((?:\d{1,2}:)?\d{1,2}:\d{2})[\])]?\s*[-–—:|.)]*\s*(\S.{0,150})$"
+)
+
+
+def parse_chapters(description: str, duration_s: int = 0) -> list[dict]:
+    """YouTube-style chapters from a video description.
+
+    Follows YouTube's own rules so only real chapter lists are shown: the first stamp
+    is 0:00, there are at least three, and they increase.
+    """
+    out: list[dict] = []
+    for line in (description or "").splitlines():
+        m = _CHAPTER_LINE.match(line)
+        if not m:
+            continue
+        start = stamp_seconds(m.group(1))
+        title = " ".join(m.group(2).split()).strip(" -–—|")[:120]
+        if not title or (out and start <= out[-1]["start_s"]):
+            continue
+        if duration_s and start >= duration_s:
+            break
+        out.append({"start_s": start, "title": title})
+    if len(out) < 3 or out[0]["start_s"] != 0:
+        return []
     return out

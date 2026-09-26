@@ -1,0 +1,3 @@
+# Tailwind's file watcher is only used by --watch; the one-off build doesn't need its native addon.
+allowBuilds:
+  '@parcel/watcher': false

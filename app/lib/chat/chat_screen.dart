@@ -3,97 +3,127 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../auth/auth.dart';
+import '../player/mini_player.dart';
 import '../player/player_overlay.dart';
-import '../theme.dart';
+import '../settings/preferences.dart';
 import '../shell/history.dart';
-import '../shell/right_panel.dart';
+import '../shell/shortcuts.dart';
 import '../shell/side_nav.dart';
+import '../shell/top_bar.dart';
+import '../theme.dart';
 import '../widgets/logo.dart';
 import 'chat_controller.dart';
+import 'models.dart';
+import 'quick_actions.dart';
+import 'reply.dart';
 import 'widgets.dart';
 
+/// Chat-first layout (OTTAI-4): the chat is always the main surface; a playing
+/// video floats in the mini-player, or takes over the column in theater mode.
 class ChatScreen extends ConsumerWidget {
   const ChatScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = ShadTheme.of(context).colorScheme;
+    // Start loading saved collapse toggles before any reply is built.
+    ref.watch(collapseProvider.select((_) => null));
     final playerOpen = ref.watch(chatProvider.select((s) => s.playerOpen));
+    final theater =
+        playerOpen && ref.watch(playerModeProvider) == PlayerMode.theater;
+    final mini = playerOpen && !theater;
     final width = MediaQuery.sizeOf(context).width;
     final mobile = width < mobileBreakpoint;
-    final showRight = width >= rightPanelBreakpoint;
+    final navExpanded = width >= navExpandedBreakpoint;
 
     final main = Stack(
       fit: StackFit.expand,
       children: [
         // Keep the chat mounted underneath so its scroll position survives.
         Offstage(
-          offstage: playerOpen,
-          child: ExcludeFocus(excluding: playerOpen, child: const _ChatBody()),
+          offstage: theater,
+          child: ExcludeFocus(excluding: theater, child: const _ChatBody()),
         ),
-        if (playerOpen)
-          Positioned.fill(
-            child: PlayerOverlay(inlineRecommendations: !showRight),
-          ),
+        if (theater) const Positioned.fill(child: PlayerOverlay()),
+        // Only one of PlayerOverlay / MiniPlayer is mounted at a time, so the
+        // player view (GlobalKey) moves between them without reloading.
+        if (mini)
+          mobile
+              ? const Positioned(
+                  top: 8,
+                  left: 8,
+                  right: 8,
+                  child: MiniPlayer(compact: true),
+                )
+              : Positioned(
+                  top: 16,
+                  right: 16,
+                  width:
+                      (width -
+                              (navExpanded ? navExpandedWidth : navRailWidth) -
+                              32)
+                          .clamp(280.0, miniPlayerWidth),
+                  child: const MiniPlayer(),
+                ),
       ],
     );
 
-    return Scaffold(
-      backgroundColor: cs.background,
-      body: mobile
-          ? SafeArea(
-              bottom: false,
-              child: Column(
+    return GlobalShortcuts(
+      child: Scaffold(
+        backgroundColor: cs.background,
+        body: mobile
+            ? SafeArea(
+                bottom: false,
+                child: Column(
+                  children: [
+                    const _MobileBar(),
+                    Expanded(child: main),
+                  ],
+                ),
+              )
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const _MobileBar(),
-                  Expanded(child: main),
+                  SizedBox(
+                    width: navExpanded ? navExpandedWidth : navRailWidth,
+                    child: SideNav(
+                      expanded: navExpanded,
+                      onHistory: navExpanded
+                          ? null
+                          : () => showHistorySheet(context),
+                    ),
+                  ),
+                  VerticalDivider(width: 1, color: cs.border),
+                  Expanded(
+                    child: SafeArea(
+                      left: false,
+                      bottom: false,
+                      child: Column(
+                        children: [
+                          const TopBar(),
+                          Expanded(child: main),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ),
-            )
-          : Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(
-                  width: width >= navExpandedBreakpoint
-                      ? navExpandedWidth
-                      : navRailWidth,
-                  child: SideNav(
-                    expanded: width >= navExpandedBreakpoint,
-                    onHistory: showRight
-                        ? null
-                        : () => showHistorySheet(context),
-                  ),
-                ),
-                VerticalDivider(width: 1, color: cs.border),
-                Expanded(
-                  child: SafeArea(
-                    left: false,
-                    right: false,
-                    bottom: false,
-                    child: main,
-                  ),
-                ),
-                if (showRight) ...[
-                  VerticalDivider(width: 1, color: cs.border),
-                  const SizedBox(width: rightPanelWidth, child: RightPanel()),
-                ],
-              ],
-            ),
+      ),
     );
   }
 }
 
-/// History as a right-hand sheet when the right panel isn't on screen.
+/// History as a sheet when the full sidebar isn't on screen.
 void showHistorySheet(BuildContext context) {
   final width = MediaQuery.sizeOf(context).width;
   showShadSheet(
     context: context,
-    side: ShadSheetSide.right,
+    side: ShadSheetSide.left,
     builder: (ctx) => ShadSheet(
       title: const Text('History'),
-      padding: const EdgeInsets.fromLTRB(16, 20, 8, 0),
+      padding: const EdgeInsets.fromLTRB(12, 20, 8, 0),
       constraints: BoxConstraints(
-        maxWidth: width < 420 ? width * .88 : rightPanelWidth,
+        maxWidth: width < 420 ? width * .88 : navExpandedWidth + 24,
       ),
       child: SizedBox(
         height: MediaQuery.sizeOf(ctx).height - 90,
@@ -103,7 +133,7 @@ void showHistorySheet(BuildContext context) {
   );
 }
 
-/// Phone top bar: menu (left navigation) · logo · history (right sheet).
+/// Phone top bar: menu (left navigation) · logo · new session.
 class _MobileBar extends ConsumerWidget {
   const _MobileBar();
 
@@ -132,10 +162,6 @@ class _MobileBar extends ConsumerWidget {
               const ShadBadge.outline(child: Text('Demo')),
             ],
             const Spacer(),
-            ShadIconButton.ghost(
-              icon: const Icon(LucideIcons.history, size: 19),
-              onPressed: () => showHistorySheet(context),
-            ),
             ShadIconButton.ghost(
               icon: const Icon(LucideIcons.squarePen, size: 19),
               onPressed: ref.read(chatProvider.notifier).newChat,
@@ -175,19 +201,28 @@ class _ChatBody extends ConsumerStatefulWidget {
 
 class _ChatBodyState extends ConsumerState<_ChatBody> {
   final _scroll = ScrollController();
+  final _composerFocus = FocusNode(debugLabel: 'chat-composer');
 
   @override
   void dispose() {
     _scroll.dispose();
+    _composerFocus.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = ShadTheme.of(context);
-    final cs = theme.colorScheme;
     final s = ref.watch(chatProvider);
     final narrow = MediaQuery.sizeOf(context).width < 600;
+    final hPad = narrow ? 12.0 : 24.0;
+
+    // Back to typing here whenever theater mode gives way to the chat.
+    ref.listen(playerModeProvider, (_, mode) {
+      if (mode != PlayerMode.mini) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _composerFocus.requestFocus();
+      });
+    });
 
     ref.listen(chatProvider.select((s) => s.error), (_, err) {
       if (err != null) {
@@ -197,46 +232,40 @@ class _ChatBodyState extends ConsumerState<_ChatBody> {
       }
     });
 
+    Widget column(Widget child) => Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: contentMaxWidth),
+        child: child,
+      ),
+    );
+
     final list = s.messages.isEmpty
         ? const _EmptyState()
         : ListView.builder(
             controller: _scroll,
             reverse: true,
-            padding: EdgeInsets.fromLTRB(
-              narrow ? 12 : 24,
-              24,
-              narrow ? 12 : 24,
-              12,
-            ),
+            padding: EdgeInsets.fromLTRB(hPad, 24, hPad, 12),
             itemCount: s.messages.length + (s.sending ? 1 : 0),
             itemBuilder: (_, i) {
               if (s.sending && i == 0) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 18),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(
-                        maxWidth: contentMaxWidth,
-                      ),
-                      child: const Align(
-                        alignment: Alignment.centerLeft,
-                        child: TypingIndicator(),
-                      ),
+                  child: column(
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: TypingIndicator(),
                     ),
                   ),
                 );
               }
-              final m =
-                  s.messages[s.messages.length - 1 - (i - (s.sending ? 1 : 0))];
+              final index = s.messages.length - 1 - (i - (s.sending ? 1 : 0));
+              final m = s.messages[index];
               return Padding(
-                padding: const EdgeInsets.only(bottom: 18),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      maxWidth: contentMaxWidth,
-                    ),
-                    child: MessageBubble(message: m),
-                  ),
+                padding: const EdgeInsets.only(bottom: 22),
+                child: column(
+                  m.role == Role.user
+                      ? UserBubble(message: m)
+                      : AssistantReply(message: m, index: index),
                 ),
               );
             },
@@ -244,31 +273,27 @@ class _ChatBodyState extends ConsumerState<_ChatBody> {
 
     return Column(
       children: [
+        if (!narrow) const SessionBreadcrumb(),
         Expanded(child: list),
         Padding(
-          padding: EdgeInsets.fromLTRB(
-            narrow ? 12 : 24,
-            0,
-            narrow ? 12 : 24,
-            12,
-          ),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: contentMaxWidth),
-              child: Column(
-                children: [
-                  const Composer(autofocus: true),
+          padding: EdgeInsets.fromLTRB(hPad, 0, hPad, 12),
+          child: column(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (s.playerOpen) ...[
+                  const QuickActions(),
                   const SizedBox(height: 8),
-                  Text(
-                    'Videos play from YouTube. Say “forward 25 sec” or “stop” while watching.',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.muted.copyWith(
-                      fontSize: 12,
-                      color: cs.mutedForeground,
-                    ),
-                  ),
                 ],
-              ),
+                Composer(
+                  autofocus: true,
+                  focusNode: _composerFocus,
+                  // ← / → seek and Esc stops from the chat too.
+                  playerKeys: s.playerOpen,
+                ),
+                const SizedBox(height: 8),
+                ShortcutHint(playing: s.playerOpen),
+              ],
             ),
           ),
         ),
@@ -309,12 +334,16 @@ class _EmptyState extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'What do you want to watch?',
-                style: theme.textTheme.h2.copyWith(letterSpacing: -0.6),
+                'What do you want to learn today?',
+                style: theme.textTheme.h2.copyWith(
+                  letterSpacing: -0.8,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 8),
               Text(
-                'Ask about any topic. I’ll find a free video and play it right here.',
+                'Ask about any topic. I’ll find a free video, play it right here, '
+                'and pull out the key moments.',
                 style: theme.textTheme.muted.copyWith(fontSize: 15),
               ),
               const SizedBox(height: 20),
@@ -325,6 +354,7 @@ class _EmptyState extends ConsumerWidget {
                   for (final s in _suggestions)
                     ShadButton.outline(
                       size: ShadButtonSize.sm,
+                      leading: const Icon(LucideIcons.sparkles, size: 13),
                       onPressed: () => ref.read(chatProvider.notifier).send(s),
                       child: Text(s),
                     ),

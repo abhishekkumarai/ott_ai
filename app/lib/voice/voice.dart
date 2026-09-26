@@ -52,7 +52,10 @@ class VoiceController extends Notifier<VoiceState> {
     }
   }
 
-  Future<void> start(void Function(String text) onFinal) async {
+  Future<void> start(
+    void Function(String text) onFinal, {
+    String? localeId,
+  }) async {
     if (!_initialized || state.listening) return;
     _onFinal = onFinal;
     state = state.copyWith(listening: true, partial: '');
@@ -66,6 +69,7 @@ class VoiceController extends Notifier<VoiceState> {
         }
       },
       listenOptions: SpeechListenOptions(
+        localeId: localeId,
         partialResults: true,
         cancelOnError: true,
         listenFor: const Duration(seconds: 15),

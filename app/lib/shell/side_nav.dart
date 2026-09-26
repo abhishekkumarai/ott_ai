@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../auth/auth.dart';
 import '../chat/chat_controller.dart';
+import '../library/saved.dart';
 import '../theme.dart';
 import '../widgets/logo.dart';
+import 'history.dart';
+import 'shortcuts.dart';
 
-/// Left navigation. [expanded] shows labels (wide screens and the phone menu sheet);
-/// otherwise it is a compact icon rail. [onHistory] is set when the history panel is
-/// not permanently visible, adding a "History" entry that opens it.
-class SideNav extends ConsumerWidget {
+/// Left navigation (OTTAI-10). [expanded] shows labels, search and the history
+/// list (wide screens and the phone menu sheet); otherwise it is an icon rail and
+/// [onHistory] opens the history as a sheet.
+class SideNav extends ConsumerStatefulWidget {
   const SideNav({
     super.key,
     required this.expanded,
@@ -24,253 +28,394 @@ class SideNav extends ConsumerWidget {
   final VoidCallback? onNavigate;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = ShadTheme.of(context);
-    final cs = theme.colorScheme;
-    final chat = ref.read(chatProvider.notifier);
-    final user = ref.watch(authProvider.select((a) => a.user));
-    final models = ref.watch(chatProvider.select((s) => s.models));
-    final model = ref.watch(chatProvider.select((s) => s.model));
+  ConsumerState<SideNav> createState() => _SideNavState();
+}
 
-    void run(VoidCallback f) {
-      f();
-      onNavigate?.call();
-    }
+enum _List { chats, saved }
 
-    Widget item(
-      IconData icon,
-      String label,
-      VoidCallback onTap, {
-      bool primary = false,
-    }) {
-      if (!expanded) {
-        return ShadTooltip(
-          builder: (_) => Text(label),
-          child: primary
-              ? ShadIconButton(icon: Icon(icon, size: 18), onPressed: onTap)
-              : ShadIconButton.ghost(
-                  icon: Icon(icon, size: 18),
-                  onPressed: onTap,
-                ),
-        );
-      }
-      final child = Text(label);
-      final leading = Icon(icon, size: 16);
-      return SizedBox(
-        width: double.infinity,
-        child: primary
-            ? ShadButton(
-                onPressed: onTap,
-                leading: leading,
-                mainAxisAlignment: MainAxisAlignment.start,
-                child: child,
-              )
-            : ShadButton.ghost(
-                onPressed: onTap,
-                leading: leading,
-                mainAxisAlignment: MainAxisAlignment.start,
-                child: child,
-              ),
-      );
-    }
+class _SideNavState extends ConsumerState<SideNav> {
+  String _query = '';
+  _List _list = _List.chats;
 
-    final account = user == null
-        ? const SizedBox.shrink()
-        : expanded
-        ? Row(
-            children: [
-              CircleAvatar(
-                radius: 15,
-                backgroundColor: cs.muted,
-                child: Icon(
-                  LucideIcons.circleUser,
-                  size: 16,
-                  color: cs.mutedForeground,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      user.isDemo ? 'Demo session' : user.email,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.small.copyWith(
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    if (user.isDemo)
-                      Text(
-                        'Deleted after 24 hours',
-                        style: theme.textTheme.muted.copyWith(fontSize: 12),
-                      ),
-                  ],
-                ),
-              ),
-              ShadTooltip(
-                builder: (_) => const Text('Sign out'),
-                child: ShadIconButton.ghost(
-                  icon: const Icon(LucideIcons.logOut, size: 16),
-                  onPressed: () => run(() => _signOut(ref)),
-                ),
-              ),
-            ],
-          )
-        : ShadTooltip(
-            builder: (_) => Text(
-              user.isDemo ? 'Sign out of demo' : 'Sign out ${user.email}',
-            ),
-            child: ShadIconButton.ghost(
-              icon: const Icon(LucideIcons.logOut, size: 18),
-              onPressed: () => _signOut(ref),
-            ),
-          );
+  void _run(VoidCallback f) {
+    f();
+    widget.onNavigate?.call();
+  }
 
-    return ColoredBox(
-      color: cs.muted.withValues(alpha: .35),
+  @override
+  Widget build(BuildContext context) {
+    final cs = ShadTheme.of(context).colorScheme;
+    final expanded = widget.expanded;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(cs.muted.withValues(alpha: .45), cs.background),
+      ),
       child: SafeArea(
         right: false,
         child: Padding(
           padding: EdgeInsets.symmetric(
-            horizontal: expanded ? 12 : 8,
+            horizontal: expanded ? 14 : 8,
             vertical: 14,
           ),
-          child: Column(
-            crossAxisAlignment: expanded
-                ? CrossAxisAlignment.stretch
-                : CrossAxisAlignment.center,
-            children: [
-              Padding(
-                padding: EdgeInsets.only(left: expanded ? 6 : 0, bottom: 18),
-                child: Row(
-                  mainAxisAlignment: expanded
-                      ? MainAxisAlignment.start
-                      : MainAxisAlignment.center,
-                  children: [
-                    expanded ? const Logo(size: 17) : const LogoMark(size: 22),
-                    if (expanded && (user?.isDemo ?? false)) ...[
-                      const SizedBox(width: 10),
-                      const ShadBadge.outline(child: Text('Demo')),
-                    ],
-                  ],
-                ),
-              ),
-              if (!expanded && (user?.isDemo ?? false))
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 14),
-                  child: ShadTooltip(
-                    builder: (_) => const Text('Demo session, deleted after 24 hours'),
-                    child: ShadBadge.outline(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                      child: Text('Demo', style: theme.textTheme.muted.copyWith(fontSize: 10)),
-                    ),
-                  ),
-                ),
-              item(
-                LucideIcons.squarePen,
-                'New chat',
-                () => run(chat.newChat),
-                primary: true,
-              ),
-              const SizedBox(height: 6),
-              if (onHistory != null)
-                item(LucideIcons.history, 'History', () => run(onHistory!)),
-              const Spacer(),
-              if (models.length > 1) ...[
-                if (expanded) ...[
-                  Padding(
-                    padding: const EdgeInsets.only(left: 4, bottom: 6),
-                    child: Text(
-                      'Model',
-                      style: theme.textTheme.muted.copyWith(fontSize: 12),
-                    ),
-                  ),
-                  ShadSelect<String>(
-                    initialValue: model,
-                    minWidth: navExpandedWidth - 24,
-                    onChanged: (m) {
-                      if (m != null) chat.setModel(m);
-                    },
-                    options: [
-                      for (final m in models)
-                        ShadOption(value: m, child: Text(m)),
-                    ],
-                    selectedOptionBuilder: (_, v) => Row(
-                      children: [
-                        Icon(
-                          LucideIcons.cpu,
-                          size: 14,
-                          color: cs.mutedForeground,
-                        ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            v,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.small,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ] else
-                  item(
-                    LucideIcons.cpu,
-                    'Model: ${model ?? ''}',
-                    () => _pickModel(context, ref, models, model),
-                  ),
-                const SizedBox(height: 12),
-              ],
-              Divider(height: 1, color: cs.border),
-              const SizedBox(height: 12),
-              account,
-            ],
-          ),
+          child: expanded ? _expanded(context) : _rail(context),
         ),
       ),
     );
   }
 
-  void _signOut(WidgetRef ref) {
+  Widget _expanded(BuildContext context) {
+    final theme = ShadTheme.of(context);
+    final cs = theme.colorScheme;
+    final chat = ref.read(chatProvider.notifier);
+    final user = ref.watch(authProvider.select((a) => a.user));
+    final aiOn = ref.watch(chatProvider.select((s) => s.models.isNotEmpty));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 4),
+          child: Wrap(
+            spacing: 10,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              const Logo(size: 18),
+              if (user?.isDemo ?? false)
+                const ShadBadge.outline(child: Text('Demo')),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 16),
+          child: Row(
+            children: [
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: aiOn ? success : cs.mutedForeground,
+                  shape: BoxShape.circle,
+                ),
+                child: const SizedBox.square(dimension: 6),
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  aiOn ? 'AI companion active' : 'AI offline · keyword search',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.muted.copyWith(fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+        ShadTooltip(
+          builder: (_) => Text('New discovery session  ${shortcutLabel('N')}'),
+          child: ShadButton(
+            onPressed: () => _run(chat.newChat),
+            leading: const Icon(LucideIcons.plus, size: 16),
+            expands: true,
+            child: const Text(
+              'New discovery session',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        ShadInput(
+          placeholder: Text(
+            _list == _List.chats
+                ? 'Search conversations…'
+                : 'Search saved videos…',
+          ),
+          leading: Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: Icon(
+              LucideIcons.search,
+              size: 15,
+              color: cs.mutedForeground,
+            ),
+          ),
+          onChanged: (v) => setState(() => _query = v),
+        ),
+        const SizedBox(height: 10),
+        _ListSwitch(
+          value: _list,
+          savedCount: ref.watch(savedProvider.select((l) => l?.length)),
+          onChanged: (v) => setState(() => _list = v),
+        ),
+        Expanded(
+          child: _list == _List.chats
+              ? HistoryList(query: _query, onOpened: widget.onNavigate)
+              : SavedList(
+                  query: _query,
+                  onPlay: (v) => _run(() => chat.play(v)),
+                ),
+        ),
+        Divider(height: 1, color: cs.border),
+        const SizedBox(height: 10),
+        _navButton(
+          LucideIcons.settings,
+          'Settings',
+          () => _run(() => context.go('/settings')),
+        ),
+        _navButton(
+          LucideIcons.keyboard,
+          'Keyboard shortcuts',
+          () => _run(() => showShortcutsDialog(context)),
+          trailing: Text('?', style: mono(context, size: 11)),
+        ),
+        const SizedBox(height: 8),
+        if (user != null) _ProfileCard(onSignOut: () => _run(_signOut)),
+      ],
+    );
+  }
+
+  Widget _navButton(
+    IconData icon,
+    String label,
+    VoidCallback onTap, {
+    Widget? trailing,
+  }) => ShadButton.ghost(
+    onPressed: onTap,
+    leading: Icon(icon, size: 16),
+    trailing: trailing,
+    mainAxisAlignment: MainAxisAlignment.start,
+    expands: true,
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+    ),
+  );
+
+  Widget _rail(BuildContext context) {
+    final chat = ref.read(chatProvider.notifier);
+    final user = ref.watch(authProvider.select((a) => a.user));
+
+    Widget icon(
+      IconData i,
+      String tip,
+      VoidCallback onTap, {
+      bool primary = false,
+    }) => Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: ShadTooltip(
+        builder: (_) => Text(tip),
+        child: primary
+            ? ShadIconButton(icon: Icon(i, size: 18), onPressed: onTap)
+            : ShadIconButton.ghost(icon: Icon(i, size: 18), onPressed: onTap),
+      ),
+    );
+
+    return Column(
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(bottom: 18),
+          child: LogoMark(size: 24),
+        ),
+        if (user?.isDemo ?? false)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: ShadBadge.outline(
+              padding: EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              child: Text('Demo', style: TextStyle(fontSize: 10)),
+            ),
+          ),
+        icon(
+          LucideIcons.plus,
+          'New discovery session  ${shortcutLabel('N')}',
+          chat.newChat,
+          primary: true,
+        ),
+        if (widget.onHistory != null)
+          icon(LucideIcons.history, 'History', widget.onHistory!),
+        icon(
+          LucideIcons.bookmark,
+          'Saved videos',
+          () => showSavedSheet(context),
+        ),
+        const Spacer(),
+        icon(LucideIcons.settings, 'Settings', () => context.go('/settings')),
+        icon(
+          LucideIcons.keyboard,
+          'Keyboard shortcuts  ?',
+          () => showShortcutsDialog(context),
+        ),
+        if (user != null)
+          icon(
+            LucideIcons.logOut,
+            user.isDemo ? 'Sign out of demo' : 'Sign out ${user.email}',
+            _signOut,
+          ),
+      ],
+    );
+  }
+
+  void _signOut() {
     ref.read(chatProvider.notifier).newChat();
     ref.read(authProvider.notifier).signOut();
   }
+}
 
-  void _pickModel(
-    BuildContext context,
-    WidgetRef ref,
-    List<String> models,
-    String? current,
-  ) {
-    showShadDialog(
-      context: context,
-      builder: (ctx) => ShadDialog(
-        title: const Text('Model'),
-        description: const Text('Runs locally with Ollama. Smaller is faster.'),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+class _ProfileCard extends ConsumerWidget {
+  const _ProfileCard({required this.onSignOut});
+  final VoidCallback onSignOut;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = ShadTheme.of(context);
+    final cs = theme.colorScheme;
+    final user = ref.watch(authProvider.select((a) => a.user))!;
+    final initials = user.isDemo
+        ? 'D'
+        : user.email.substring(0, 1).toUpperCase();
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: cs.card,
+        border: Border.all(color: cs.border),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
+        child: Row(
           children: [
-            for (final m in models)
-              SizedBox(
-                width: double.infinity,
-                child: ShadButton.ghost(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  leading: Icon(
-                    m == current ? LucideIcons.check : null,
-                    size: 16,
-                  ),
-                  onPressed: () {
-                    ref.read(chatProvider.notifier).setModel(m);
-                    Navigator.of(ctx).pop();
-                  },
-                  child: Text(m),
+            ShadAvatar(
+              null,
+              size: const Size.square(32),
+              backgroundColor: coralSoftOn(context),
+              placeholder: Text(
+                initials,
+                style: theme.textTheme.small.copyWith(
+                  color: coralOn(context),
+                  fontWeight: FontWeight.w700,
                 ),
               ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    user.isDemo ? 'Demo session' : user.email,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.small.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    user.isDemo ? 'Deleted after 24 hours' : 'Signed in',
+                    style: theme.textTheme.muted.copyWith(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            ShadTooltip(
+              builder: (_) => const Text('Sign out'),
+              child: ShadIconButton.ghost(
+                width: 32,
+                height: 32,
+                icon: const Icon(LucideIcons.logOut, size: 16),
+                onPressed: onSignOut,
+              ),
+            ),
           ],
         ),
       ),
     );
   }
+}
+
+/// "Chats | Saved" segmented switch above the sidebar list (OTTAI-16).
+class _ListSwitch extends StatelessWidget {
+  const _ListSwitch({
+    required this.value,
+    required this.savedCount,
+    required this.onChanged,
+  });
+  final _List value;
+  final int? savedCount;
+  final ValueChanged<_List> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = ShadTheme.of(context).colorScheme;
+    Widget tab(_List t, IconData icon, String label) {
+      final selected = t == value;
+      final child = Text(label, maxLines: 1, overflow: TextOverflow.ellipsis);
+      return Expanded(
+        child: selected
+            ? ShadButton.secondary(
+                size: ShadButtonSize.sm,
+                leading: Icon(icon, size: 14),
+                decoration: ShadDecoration(
+                  border: ShadBorder.all(radius: BorderRadius.circular(8)),
+                ),
+                backgroundColor: cs.card,
+                onPressed: () {},
+                child: child,
+              )
+            : ShadButton.ghost(
+                size: ShadButtonSize.sm,
+                leading: Icon(icon, size: 14),
+                foregroundColor: cs.mutedForeground,
+                onPressed: () => onChanged(t),
+                child: child,
+              ),
+      );
+    }
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: cs.muted,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(3),
+        child: Row(
+          children: [
+            tab(_List.chats, LucideIcons.messageSquare, 'Chats'),
+            const SizedBox(width: 3),
+            tab(
+              _List.saved,
+              LucideIcons.bookmark,
+              savedCount == null || savedCount == 0
+                  ? 'Saved'
+                  : 'Saved · $savedCount',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Saved videos as a sheet (icon rail / phones).
+void showSavedSheet(BuildContext context) {
+  final width = MediaQuery.sizeOf(context).width;
+  showShadSheet(
+    context: context,
+    side: ShadSheetSide.left,
+    builder: (ctx) => ShadSheet(
+      title: const Text('Saved videos'),
+      padding: const EdgeInsets.fromLTRB(12, 20, 8, 0),
+      constraints: BoxConstraints(
+        maxWidth: width < 420 ? width * .88 : navExpandedWidth + 24,
+      ),
+      child: SizedBox(
+        height: MediaQuery.sizeOf(ctx).height - 90,
+        child: Consumer(
+          builder: (context, ref, _) => SavedList(
+            onPlay: (v) {
+              Navigator.of(ctx).pop();
+              ref.read(chatProvider.notifier).play(v);
+            },
+          ),
+        ),
+      ),
+    ),
+  );
 }

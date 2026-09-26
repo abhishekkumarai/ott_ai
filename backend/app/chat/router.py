@@ -26,8 +26,10 @@ class ChatIn(BaseModel):
 
 
 class ActionOut(BaseModel):
-    type: Literal["seek", "pause", "play", "stop", "next"]
+    type: Literal["seek", "pause", "play", "stop", "next", "loop", "unloop", "mute", "unmute", "save"]
     seconds: float = 0
+    start: float | None = None
+    end: float | None = None
 
 
 class ChatOut(BaseModel):
@@ -36,6 +38,7 @@ class ChatOut(BaseModel):
     videos: list[VideoOut] = []
     action: ActionOut | None = None
     source: Literal["command", "catalog", "youtube", "none", "chat"]
+    highlights: list[str] = []
 
 
 class ConversationOut(BaseModel):
@@ -61,7 +64,15 @@ def _command_reply(action: str, seconds: float) -> str:
         n = int(abs(seconds)) if float(seconds).is_integer() else abs(seconds)
         return f"{'Forward' if seconds > 0 else 'Back'} {n} seconds."
     return {"pause": "Paused.", "play": "Playing.", "stop": "Stopped. Back to chat.",
-            "next": "Playing the next video."}[action]
+            "next": "Playing the next video.", "loop": "Looping this part.",
+            "unloop": "Stopped looping.", "mute": "Muted.", "unmute": "Sound on.",
+            "save": "Saved to your library."}[action]
+
+
+def _clock(seconds: float) -> str:
+    s = int(seconds)
+    h, m, r = s // 3600, s % 3600 // 60, s % 60
+    return f"{h}:{m:02d}:{r:02d}" if h else f"{m}:{r:02d}"
 
 
 async def _conversation(db: DB, user_id: uuid.UUID, cid: uuid.UUID | None, title: str) -> Conversation:
@@ -110,7 +121,9 @@ async def chat(request: Request, body: ChatIn, db: DB, user: CurrentUser):
             action = None
         else:
             reply = _command_reply(cmd.action, cmd.seconds)
-            action = ActionOut(type=cmd.action, seconds=cmd.seconds)
+            if cmd.action == "loop" and cmd.start is not None and cmd.end is not None:
+                reply = f"Looping {_clock(cmd.start)} to {_clock(cmd.end)}."
+            action = ActionOut(type=cmd.action, seconds=cmd.seconds, start=cmd.start, end=cmd.end)
         db.add(Message(conversation_id=conv.id, role="assistant", content=reply))
         await db.commit()
         return ChatOut(conversation_id=conv.id, reply=reply, action=action, source="command")
@@ -128,10 +141,11 @@ async def chat(request: Request, body: ChatIn, db: DB, user: CurrentUser):
     u = await understand(text, model, history)
 
     videos: list[Video] = []
+    scores: dict[str, int] = {}
     source = "chat"
     reply = u.reply
     if u.topic:
-        videos, source = await service.find_videos(db, u.topic)
+        videos, source, scores = await service.find_videos_scored(db, u.topic)
         if not videos:
             reply = f"I couldn't find a video for “{u.topic}”. Try describing it differently."
     db.add(
@@ -146,8 +160,9 @@ async def chat(request: Request, body: ChatIn, db: DB, user: CurrentUser):
     return ChatOut(
         conversation_id=conv.id,
         reply=reply,
-        videos=[VideoOut.of(v) for v in videos],
+        videos=[VideoOut.of(v, scores.get(v.youtube_id)) for v in videos],
         source=source,
+        highlights=u.highlights if videos else [],
     )
 
 
@@ -184,6 +199,13 @@ async def messages(conversation_id: ConvId, db: DB, user: CurrentUser):
         )
         for m in msgs
     ]
+
+
+@router.delete("/conversations", status_code=204)
+async def delete_all_conversations(db: DB, user: CurrentUser):
+    """Clear the user's whole chat history."""
+    await db.execute(delete(Conversation).where(Conversation.user_id == user.id))
+    await db.commit()
 
 
 @router.delete("/conversations/{conversation_id}", status_code=204)

@@ -226,3 +226,73 @@ async def logout(
 @router.get("/me", response_model=UserOut)
 async def me(user: CurrentUser):
     return UserOut.of(user)
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=1, max_length=128)
+
+
+class PasswordConfirm(BaseModel):
+    password: str = Field(min_length=1, max_length=128)
+
+
+def _no_demo(user: User) -> None:
+    if user.is_demo:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not available for demo sessions")
+
+
+async def _confirm_password(db: DB, user: User, password: str, wrong: str) -> None:
+    """Password re-entry for sensitive actions, with the same lockout as login, so a
+    stolen access token can't be used to guess the password.
+
+    A wrong password is 403, not 401: the app treats 401 as "session expired".
+    """
+    s = get_settings()
+    now = datetime.now(UTC)
+    if user.locked_until and user.locked_until > now:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many attempts, try later")
+    if not verify_password(password, user.password_hash):
+        user.failed_logins += 1
+        if user.failed_logins >= s.max_login_failures:
+            user.locked_until = now + timedelta(minutes=s.lockout_minutes)
+            user.failed_logins = 0
+        await db.commit()
+        raise HTTPException(status.HTTP_403_FORBIDDEN, wrong)
+    user.failed_logins = 0
+    user.locked_until = None
+
+
+@router.post("/change-password", response_model=TokenOut)
+@limiter.limit("5/minute")
+async def change_password(
+    request: Request,
+    body: PasswordChange,
+    db: DB,
+    user: CurrentUser,
+    response: Response,
+    x_client: ClientHeader = None,
+):
+    """Signs out every other session; this one gets a fresh token pair."""
+    _no_demo(user)
+    await _confirm_password(db, user, body.current_password, "Current password is incorrect")
+    if problem := password_problem(body.new_password):
+        raise HTTPException(422, problem)
+    user.password_hash = hash_password(body.new_password)
+    await db.execute(
+        update(RefreshToken).where(RefreshToken.user_id == user.id).values(revoked=True)
+    )
+    return await _issue(db, user, response, x_client)
+
+
+@router.delete("/account", status_code=204)
+@limiter.limit("5/minute")
+async def delete_account(
+    request: Request, body: PasswordConfirm, db: DB, user: CurrentUser, response: Response
+):
+    """Deletes the user; conversations, messages, history and sessions cascade."""
+    _no_demo(user)
+    await _confirm_password(db, user, body.password, "Password is incorrect")
+    await db.execute(delete(User).where(User.id == user.id))
+    await db.commit()
+    response.delete_cookie(COOKIE, path=COOKIE_PATH)

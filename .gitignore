@@ -10,3 +10,6 @@ app/build/
 app/.dart_tool/
 *.log
 .tools/
+
+# Golden-test diff images written on failure
+app/test/failures/

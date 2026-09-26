@@ -7,10 +7,12 @@ import 'auth/auth.dart';
 import 'auth/demo_screen.dart';
 import 'auth/login_screen.dart';
 import 'chat/chat_screen.dart';
+import 'settings/preferences.dart';
+import 'settings/settings_screen.dart';
 import 'theme.dart';
 
 void main() {
-  runApp(const ProviderScope(child: ReelApp()));
+  runApp(const ProviderScope(child: OttAiApp()));
 }
 
 /// Bridges auth state changes into go_router's refreshListenable.
@@ -43,20 +45,22 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/splash', builder: (_, _) => const _Splash()),
       GoRoute(path: '/demo', builder: (_, _) => const DemoScreen()),
+      GoRoute(path: '/settings', builder: (_, _) => const SettingsScreen()),
     ],
   );
 });
 
-class ReelApp extends ConsumerWidget {
-  const ReelApp({super.key});
+class OttAiApp extends ConsumerWidget {
+  const OttAiApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return ShadApp.router(
-      title: 'Reel',
+      title: 'OTT-AI',
       theme: lightTheme(),
       darkTheme: darkTheme(),
-      themeMode: ThemeMode.system,
+      // Light by default; Settings › Appearance can pick dark or follow the system.
+      themeMode: ref.watch(preferencesProvider.select((p) => p.appearance)),
       routerConfig: ref.watch(routerProvider),
     );
   }

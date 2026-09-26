@@ -1,4 +1,4 @@
-# reel
+# OTT-AI · Flutter app
 
 A new Flutter project.
 

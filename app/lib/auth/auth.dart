@@ -80,6 +80,15 @@ class AuthController extends Notifier<AuthState> {
     await ref.read(apiProvider).logout();
     state = const AuthState(AuthStatus.signedOut);
   }
+
+  Future<void> changePassword(String current, String next) =>
+      ref.read(apiProvider).changePassword(current, next);
+
+  /// Permanently deletes the account and everything in it, then signs out.
+  Future<void> deleteAccount(String password) async {
+    await ref.read(apiProvider).deleteAccount(password);
+    state = const AuthState(AuthStatus.signedOut);
+  }
 }
 
 final authProvider = NotifierProvider<AuthController, AuthState>(

@@ -19,9 +19,10 @@ class VideoOut(BaseModel):
     duration_s: int
     topic: str
     thumbnail: str
+    match: int | None = None  # 1-99: cosine similarity as a percentage
 
     @classmethod
-    def of(cls, v: Video) -> "VideoOut":
+    def of(cls, v: Video, match: int | None = None) -> "VideoOut":
         return cls(
             youtube_id=v.youtube_id,
             title=v.title,
@@ -29,7 +30,13 @@ class VideoOut(BaseModel):
             duration_s=v.duration_s,
             topic=v.topic,
             thumbnail=f"https://i.ytimg.com/vi/{v.youtube_id}/mqdefault.jpg",
+            match=match,
         )
+
+
+class ChapterOut(BaseModel):
+    start_s: int
+    title: str
 
 
 @router.get("/search", response_model=list[VideoOut])
@@ -44,7 +51,17 @@ async def search(
 @router.get("/{youtube_id}/recommendations", response_model=list[VideoOut])
 @limiter.limit("60/minute")
 async def recommendations(request: Request, db: DB, user: CurrentUser, youtube_id: YoutubeId):
-    return [VideoOut.of(v) for v in await service.recommendations(db, youtube_id, user.id)]
+    return [VideoOut.of(v, m) for v, m in await service.recommendations(db, youtube_id, user.id)]
+
+
+@router.get("/{youtube_id}/chapters", response_model=list[ChapterOut])
+@limiter.limit("60/minute")
+async def chapters(request: Request, db: DB, user: CurrentUser, youtube_id: YoutubeId):
+    """Chapters parsed from the video description; empty when it has none."""
+    v = await db.scalar(select(Video).where(Video.youtube_id == youtube_id))
+    if v is None:
+        raise HTTPException(404, "Unknown video")
+    return [ChapterOut(**c) for c in service.parse_chapters(v.description, v.duration_s)]
 
 
 @router.post("/{youtube_id}/watched", status_code=204)

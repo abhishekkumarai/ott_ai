@@ -19,11 +19,11 @@ class Logo extends StatelessWidget {
         ),
         SizedBox(width: size * 0.5),
         Text(
-          'Reel',
+          'OTT-AI',
           style: theme.textTheme.large.copyWith(
             fontSize: size,
-            fontWeight: FontWeight.w600,
-            letterSpacing: -0.3,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.4,
           ),
         ),
       ],
@@ -38,7 +38,7 @@ class LogoMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Semantics(
-    label: 'Reel',
+    label: 'OTT-AI',
     child: CustomPaint(
       size: Size.square(size),
       painter: _Mark(ShadTheme.of(context).colorScheme.foreground),
@@ -52,22 +52,23 @@ class _Mark extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size s) {
-    final frame = RRect.fromRectAndRadius(
+    // Coral rounded tile with a white play triangle.
+    final tile = RRect.fromRectAndRadius(
       Rect.fromLTWH(
-        s.width * .08,
-        s.height * .17,
-        s.width * .84,
-        s.height * .66,
+        s.width * .04,
+        s.height * .04,
+        s.width * .92,
+        s.height * .92,
       ),
-      Radius.circular(s.width * .13),
+      Radius.circular(s.width * .26),
     );
-    canvas.drawRRect(frame, Paint()..color = color);
+    canvas.drawRRect(tile, Paint()..color = coral);
     final tri = Path()
-      ..moveTo(s.width * .42, s.height * .37)
-      ..lineTo(s.width * .64, s.height * .5)
-      ..lineTo(s.width * .42, s.height * .63)
+      ..moveTo(s.width * .40, s.height * .31)
+      ..lineTo(s.width * .70, s.height * .5)
+      ..lineTo(s.width * .40, s.height * .69)
       ..close();
-    canvas.drawPath(tri, Paint()..color = accent);
+    canvas.drawPath(tri, Paint()..color = const Color(0xFFFFFFFF));
   }
 
   @override

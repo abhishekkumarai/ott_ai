@@ -10,6 +10,16 @@
   var ready = false;
   var pending = null;
   var tick = null;
+  var loop = null; // {a, b} seconds while an A-B loop is active
+  var loopTimer = null;
+  var captionsOn = false;
+  // Settings sent before the YouTube player is ready are replayed on ready, and
+  // the requested speed is re-applied once a video plays (loads can reset it).
+  var pendingOps = [];
+  var desiredRate = null;
+  function whenReady(fn) { if (ready) fn(); else pendingOps.push(fn); }
+  var QUALITY = { hd2160: '4K', hd1440: '1440p', hd1080: '1080p', hd720: '720p',
+                  large: '480p', medium: '360p', small: '240p', tiny: '144p' };
   var parentOrigin = window.location.origin;
   var isNative = function () {
     return !!(window.flutter_inappwebview && window.flutter_inappwebview.callHandler);
@@ -29,8 +39,21 @@
     return {
       t: player.getCurrentTime() || 0,
       d: player.getDuration() || 0,
-      playing: player.getPlayerState() === YT.PlayerState.PLAYING
+      playing: player.getPlayerState() === YT.PlayerState.PLAYING,
+      volume: player.getVolume(),
+      muted: player.isMuted(),
+      rate: player.getPlaybackRate(),
+      quality: QUALITY[player.getPlaybackQuality()] || '',
+      captions: captionsOn,
+      loopA: loop ? loop.a : null,
+      loopB: loop ? loop.b : null
     };
+  }
+
+  function clearLoop() {
+    loop = null;
+    clearInterval(loopTimer);
+    loopTimer = null;
   }
 
   function startTicking() {
@@ -48,6 +71,7 @@
       if (typeof id !== 'string' || !ID_RE.test(id)) return;
       start = Math.max(0, Number(start) || 0);
       if (!ready) { pending = { id: id, start: start }; return; }
+      clearLoop();
       player.loadVideoById({ videoId: id, startSeconds: start });
       ensurePlaying();
     },
@@ -69,12 +93,70 @@
     play: function () { if (ready) player.playVideo(); },
     stop: function () {
       if (!ready) return;
+      clearLoop();
       var s = state();
       player.pauseVideo();
       stopTicking();
       emit('stopped', s);
     },
-    unmute: function () { if (ready) { player.unMute(); player.setVolume(100); } },
+    unmute: function () {
+      whenReady(function () {
+        player.unMute();
+        if (player.getVolume() === 0) player.setVolume(100);
+        emit('time', state());
+      });
+    },
+    mute: function () { whenReady(function () { player.mute(); emit('time', state()); }); },
+    seekTo: function (t) {
+      if (!ready) return;
+      t = Number(t);
+      if (!isFinite(t)) return;
+      var d = player.getDuration() || 0;
+      t = Math.max(0, d ? Math.min(t, d - 1) : t);
+      player.seekTo(t, true);
+      player.playVideo();
+      emit('time', { t: t, d: d, playing: true });
+    },
+    setVolume: function (v) {
+      v = Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
+      whenReady(function () {
+        player.setVolume(v);
+        if (v > 0 && player.isMuted()) player.unMute();
+        emit('time', state());
+      });
+    },
+    setRate: function (r) {
+      r = Number(r);
+      if ([0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].indexOf(r) < 0) return;
+      desiredRate = r;
+      whenReady(function () { player.setPlaybackRate(r); emit('time', state()); });
+    },
+    captions: function (on) {
+      if (!ready) { whenReady(function () { api.captions(on); }); return; }
+      captionsOn = !!on;
+      // Not part of the documented API, but the long-standing way to toggle captions.
+      try {
+        if (captionsOn) player.loadModule('captions'); else player.unloadModule('captions');
+      } catch (e) { captionsOn = false; }
+      emit('time', state());
+    },
+    loop: function (a, b) {
+      if (!ready) { whenReady(function () { api.loop(a, b); }); return; }
+      a = Number(a); b = Number(b);
+      if (!isFinite(a) || !isFinite(b) || b - a < 1) return;
+      clearLoop();
+      loop = { a: Math.max(0, a), b: b };
+      loopTimer = setInterval(function () {
+        if (!loop) return;
+        var t = player.getCurrentTime() || 0;
+        if (t >= loop.b || t < loop.a - 1) player.seekTo(loop.a, true);
+      }, 250);
+      var t = player.getCurrentTime() || 0;
+      if (t < loop.a || t >= loop.b) player.seekTo(loop.a, true);
+      player.playVideo();
+      emit('time', state());
+    },
+    unloop: function () { clearLoop(); if (ready) emit('time', state()); },
     getState: function () { return state(); }
   };
   window.ottPlayer = api;
@@ -103,6 +185,13 @@
       case 'play': api.play(); break;
       case 'stop': api.stop(); break;
       case 'unmute': api.unmute(); break;
+      case 'mute': api.mute(); break;
+      case 'seekTo': api.seekTo(d.seconds); break;
+      case 'setVolume': api.setVolume(d.value); break;
+      case 'setRate': api.setRate(d.value); break;
+      case 'captions': api.captions(d.value === 1); break;
+      case 'loop': api.loop(d.start, d.end); break;
+      case 'unloop': api.unloop(); break;
       case 'state': emit('time', state()); break;
     }
   });
@@ -124,10 +213,20 @@
           ready = true;
           emit('ready', {});
           if (pending) { api.load(pending.id, pending.start); pending = null; }
+          var ops = pendingOps; pendingOps = [];
+          ops.forEach(function (fn) { fn(); });
         },
         onStateChange: function (e) {
-          if (e.data === YT.PlayerState.PLAYING) startTicking();
-          if (e.data === YT.PlayerState.ENDED) { stopTicking(); emit('ended', state()); }
+          if (e.data === YT.PlayerState.PLAYING) {
+            startTicking();
+            if (desiredRate && player.getPlaybackRate() !== desiredRate) player.setPlaybackRate(desiredRate);
+          }
+          if (e.data === YT.PlayerState.ENDED) {
+            // A loop that runs to the very end repeats instead of ending the video.
+            if (loop) { player.seekTo(loop.a, true); player.playVideo(); return; }
+            stopTicking();
+            emit('ended', state());
+          }
           emit('state', state());
         },
         onError: function (e) { emit('error', { code: e.data, message: ERRORS[e.data] || 'Error' }); }
