@@ -54,6 +54,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -121,3 +122,21 @@ dependency_overrides:
   # Patched for current Android Gradle Plugin; see third_party/README.md
   flutter_inappwebview_android:
     path: third_party/flutter_inappwebview_android
+
+# App icons from the coral mark (web/favicon.svg), rendered to assets/icon/.
+# Regenerate with: dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: "assets/icon/icon.png"
+  android: "ic_launcher"
+  adaptive_icon_background: "#FF5A3D"
+  adaptive_icon_foreground: "assets/icon/foreground.png"
+  ios: false
+  web:
+    generate: true
+    image_path: "assets/icon/icon.png"
+    background_color: "#F9F9F6"
+    theme_color: "#FF5A3D"
+  windows:
+    generate: true
+    image_path: "assets/icon/icon.png"
+    icon_size: 256
