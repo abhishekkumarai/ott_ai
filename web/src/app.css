@@ -2,59 +2,76 @@
 @source "../landing";
 @source "../admin";
 
+/* Same typefaces as the Flutter app (app/assets/fonts), SIL OFL 1.1. */
 @font-face {
-  font-family: "Geist";
-  src: url("/fonts/Geist-Variable.woff2") format("woff2");
-  font-weight: 100 900;
+  font-family: "Plus Jakarta Sans";
+  src: url("/fonts/PlusJakartaSans-400.ttf") format("truetype");
+  font-weight: 400;
   font-display: swap;
 }
 @font-face {
-  font-family: "Geist Mono";
-  src: url("/fonts/GeistMono-Variable.woff2") format("woff2");
-  font-weight: 100 900;
+  font-family: "Plus Jakarta Sans";
+  src: url("/fonts/PlusJakartaSans-500.ttf") format("truetype");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("/fonts/PlusJakartaSans-600.ttf") format("truetype");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("/fonts/PlusJakartaSans-700.ttf") format("truetype");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-500.ttf") format("truetype");
+  font-weight: 400 600;
   font-display: swap;
 }
 
-/* shadcn/ui "zinc" tokens, one accent */
+/* The app's coral-on-paper palette (app/lib/theme.dart, design.md §1).
+   Light only, like the app's default. */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --border: oklch(0.92 0.004 286.32);
-  --card: oklch(1 0 0);
-  --primary: oklch(0.21 0.006 285.885);
-  --primary-foreground: oklch(0.985 0 0);
-  --accent: oklch(0.646 0.222 41.116);
-  --destructive: oklch(0.577 0.245 27.325);
-  --ring: oklch(0.705 0.015 286.067);
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: oklch(0.141 0.005 285.823);
-    --foreground: oklch(0.985 0 0);
-    --muted: oklch(0.274 0.006 286.033);
-    --muted-foreground: oklch(0.705 0.015 286.067);
-    --border: oklch(1 0 0 / 10%);
-    --card: oklch(0.21 0.006 285.885);
-    --primary: oklch(0.92 0.004 286.32);
-    --primary-foreground: oklch(0.21 0.006 285.885);
-    --ring: oklch(0.552 0.016 285.938);
-  }
+  --background: #f9f9f6;
+  --foreground: #1a1c1b;
+  --muted: #eeeeeb;
+  --muted-foreground: #6e5a55;
+  --border: #e6dad6;
+  --input: #e3beb7;
+  --card: #ffffff;
+  --primary: #ff5a3d;
+  --primary-foreground: #ffffff;
+  --accent: #ff5a3d;
+  --coral-text: #b5250e;
+  --coral-soft: #ffdad3;
+  --success: #406840;
+  --success-soft: #c1eebc;
+  --destructive: #ba1a1a;
+  --ring: #ff5a3d;
 }
 
 @theme inline {
-  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, monospace;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
+  --color-input: var(--input);
   --color-card: var(--card);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-accent: var(--accent);
+  --color-coral-text: var(--coral-text);
+  --color-coral-soft: var(--coral-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
   --color-destructive: var(--destructive);
   --color-ring: var(--ring);
 }
@@ -67,24 +84,25 @@
 }
 
 @layer components {
+  /* Buttons and chips are pills, as in the app. */
   .btn {
-    @apply inline-flex h-9 items-center justify-center gap-2 rounded-md px-4 text-sm font-medium
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-full px-4 text-sm font-medium
       transition-colors disabled:pointer-events-none disabled:opacity-50;
   }
   .btn-primary { @apply bg-primary text-primary-foreground hover:bg-primary/90; }
-  .btn-outline { @apply border bg-background hover:bg-muted; }
+  .btn-outline { @apply border bg-card hover:bg-muted; }
   .btn-ghost { @apply hover:bg-muted; }
   .btn-sm { @apply h-8 px-3 text-xs; }
   .input {
-    @apply flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs
+    @apply flex h-9 w-full rounded-xl border border-input bg-card px-3 py-1 text-sm
       placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2
-      focus-visible:ring-ring/50;
+      focus-visible:ring-ring/40;
   }
   .label { @apply text-sm font-medium leading-none; }
-  .card { @apply rounded-xl border bg-card; }
-  .badge { @apply inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium; }
+  .card { @apply rounded-2xl border bg-card; }
+  .badge { @apply inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium; }
   .kbd {
-    @apply inline-flex h-6 items-center rounded border bg-muted px-1.5 font-mono text-xs
+    @apply inline-flex h-6 items-center rounded-md border bg-muted px-1.5 font-mono text-xs
       text-muted-foreground;
   }
 }
