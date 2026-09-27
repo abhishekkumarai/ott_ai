@@ -179,3 +179,7 @@ The Flutter app is built on [`shadcn_ui`](https://pub.dev/packages/shadcn_ui) (0
 - Ad-hoc `Container` / `DecoratedBox` card and badge styling (`app/lib/chat/widgets.dart`, `app/lib/player/mini_player.dart`) → `ShadCard` / `ShadBadge`.
 
 **Allowed exception:** loading spinners. shadcn 0.57.1 has no spinner, so `CircularProgressIndicator` stays (`main.dart`, `auth/login_screen.dart`, `auth/demo_screen.dart`, send button in `chat/widgets.dart`, `shell/history.dart`), colored from `ShadTheme` tokens.
+
+## 7. Next: Recommended rail, per-chat saves, token usage
+
+Requirements: [docs/requirements/recommended-rail-and-chat-saves.md](docs/requirements/recommended-rail-and-chat-saves.md).
