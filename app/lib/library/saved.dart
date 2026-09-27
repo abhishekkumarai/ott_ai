@@ -8,25 +8,43 @@ import '../chat/models.dart';
 import '../theme.dart';
 import '../widgets/tappable.dart';
 
-/// The user's library ("Save to practice routine", OTTAI-16), newest first.
+/// The open chat's id, mirrored by the chat controller. Saves follow it without
+/// depending on the chat itself (the chat reads saves for "save this").
+class OpenChatId extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void set(String? id) => state = id;
+}
+
+final openChatIdProvider = NotifierProvider<OpenChatId, String?>(
+  OpenChatId.new,
+);
+
+/// Videos saved in the open chat (OTTAI-26), newest first. Saves belong to one
+/// chat: switching chats switches the list, and a new chat starts empty.
 class SavedController extends Notifier<List<Video>?> {
   @override
   List<Video>? build() {
-    // Reload whenever a different user signs in; null until loaded.
+    // Reload whenever the user or the open chat changes; null while loading.
     final userId = ref.watch(authProvider.select((a) => a.user?.id));
-    if (userId != null) Future.microtask(_load);
+    final chatId = ref.watch(openChatIdProvider);
+    if (userId == null) return null;
+    if (chatId == null) return const [];
+    Future.microtask(() => _load(chatId));
     return null;
   }
 
   ApiClient get _api => ref.read(apiProvider);
+  String? get _chatId => ref.read(openChatIdProvider);
 
-  Future<void> _load() async {
+  Future<void> _load(String chatId) async {
     try {
-      final data = await _api.get('/me/saved') as List;
-      if (!ref.mounted) return;
+      final data = await _api.get('/conversations/$chatId/saved') as List;
+      if (!ref.mounted || _chatId != chatId) return;
       state = [for (final v in data) Video.fromJson(v as Map<String, dynamic>)];
     } on ApiException {
-      if (ref.mounted) state = state ?? const [];
+      if (ref.mounted && _chatId == chatId) state = state ?? const [];
     }
   }
 
@@ -34,28 +52,32 @@ class SavedController extends Notifier<List<Video>?> {
       state?.any((v) => v.youtubeId == youtubeId) ?? false;
 
   /// Idempotent server-side; optimistic here, reverted if the request fails.
+  /// Does nothing before the chat exists (nothing sent yet).
   Future<void> save(Video v) async {
-    if (isSaved(v.youtubeId)) return;
+    final chatId = _chatId;
+    if (chatId == null || isSaved(v.youtubeId)) return;
     final before = state;
     state = [v, ...?state];
     try {
-      await _api.put('/me/saved/${v.youtubeId}');
+      await _api.put('/conversations/$chatId/saved/${v.youtubeId}');
     } on ApiException {
-      if (ref.mounted) state = before;
+      if (ref.mounted && _chatId == chatId) state = before;
       rethrow;
     }
   }
 
   Future<void> remove(String youtubeId) async {
+    final chatId = _chatId;
+    if (chatId == null) return;
     final before = state;
     state = [
       for (final v in state ?? const <Video>[])
         if (v.youtubeId != youtubeId) v,
     ];
     try {
-      await _api.delete('/me/saved/$youtubeId');
+      await _api.delete('/conversations/$chatId/saved/$youtubeId');
     } on ApiException {
-      if (ref.mounted) state = before;
+      if (ref.mounted && _chatId == chatId) state = before;
       rethrow;
     }
   }
@@ -68,7 +90,8 @@ final savedProvider = NotifierProvider<SavedController, List<Video>?>(
   SavedController.new,
 );
 
-/// Save / Saved toggle for a video.
+/// "Save" / "Saved" toggle for a video, scoped to the open chat. Hidden until
+/// the chat exists (a video played before anything was sent).
 class SaveButton extends ConsumerWidget {
   const SaveButton({super.key, required this.video, this.iconOnly = false});
   final Video video;
@@ -76,6 +99,8 @@ class SaveButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final inChat = ref.watch(openChatIdProvider.select((id) => id != null));
+    if (!inChat) return const SizedBox.shrink();
     final saved = ref.watch(
       savedProvider.select(
         (l) => l?.any((v) => v.youtubeId == video.youtubeId) ?? false,
@@ -98,9 +123,10 @@ class SaveButton extends ConsumerWidget {
       size: iconOnly ? 16 : 14,
       color: saved ? coralOn(context) : null,
     );
+    final tip = Text(saved ? 'Remove from this chat' : 'Save to this chat');
     if (iconOnly) {
       return ShadTooltip(
-        builder: (_) => Text(saved ? 'Remove from library' : 'Save to library'),
+        builder: (_) => tip,
         child: ShadIconButton.ghost(
           width: 32,
           height: 32,
@@ -109,16 +135,19 @@ class SaveButton extends ConsumerWidget {
         ),
       );
     }
-    return ShadButton.outline(
-      size: ShadButtonSize.sm,
-      leading: icon,
-      onPressed: toggle,
-      child: Text(saved ? 'Saved' : 'Save to practice routine'),
+    return ShadTooltip(
+      builder: (_) => tip,
+      child: ShadButton.outline(
+        size: ShadButtonSize.sm,
+        leading: icon,
+        onPressed: toggle,
+        child: Text(saved ? 'Saved' : 'Save'),
+      ),
     );
   }
 }
 
-/// Saved videos list for the sidebar / sheet: click to play, remove on hover.
+/// The open chat's saves for the sidebar / sheet: click to play, remove on hover.
 class SavedList extends ConsumerWidget {
   const SavedList({super.key, required this.onPlay, this.query = ''});
   final void Function(Video) onPlay;
@@ -148,20 +177,37 @@ class SavedList extends ConsumerWidget {
                   v.channel.toLowerCase().contains(q))
                 v,
           ];
+    final header = Padding(
+      padding: const EdgeInsets.fromLTRB(8, 10, 8, 2),
+      child: Text(
+        all.isEmpty
+            ? 'Saved in this chat'
+            : 'Saved in this chat · ${all.length}',
+        style: mono(context, size: 11),
+      ),
+    );
     if (items.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-        child: Text(
-          all.isEmpty
-              ? 'Nothing saved yet. Use “Save to practice routine” on a video, or say “save this”.'
-              : 'No saved videos match “$query”.',
-          style: theme.textTheme.muted,
-        ),
+      return ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          header,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
+            child: Text(
+              all.isEmpty
+                  ? 'Save videos in this chat to find them here.'
+                  : 'No saved videos match “$query”.',
+              style: theme.textTheme.muted,
+            ),
+          ),
+        ],
       );
     }
     return ListView(
-      padding: const EdgeInsets.only(top: 6, bottom: 12),
+      padding: const EdgeInsets.only(top: 0, bottom: 12),
       children: [
+        header,
+        const SizedBox(height: 4),
         for (final v in items)
           _SavedRow(
             video: v,
@@ -253,7 +299,7 @@ class _SavedRowState extends State<_SavedRow> {
             HoverReveal(
               hovered: _hover,
               child: ShadTooltip(
-                builder: (_) => const Text('Remove from library'),
+                builder: (_) => const Text('Remove from this chat'),
                 child: ShadIconButton.ghost(
                   width: 30,
                   height: 30,

@@ -6,7 +6,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import case, func, literal_column, select
+from sqlalchemy import case, func, literal_column, select, true
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -193,10 +193,27 @@ async def find_videos(db: AsyncSession, query: str, limit: int = 6) -> tuple[lis
     return videos, source
 
 
+def recommend_topics() -> list[str]:
+    """Topics recommendations are drawn from (lower-case); empty = any topic."""
+    return [t.strip().lower() for t in get_settings().recommend_topics if t.strip()]
+
+
+def _in_domain_clause():
+    topics = recommend_topics()
+    return func.lower(Video.topic).in_(topics) if topics else true()
+
+
+def in_domain(v: Video) -> bool:
+    topics = recommend_topics()
+    return not topics or (v.topic or "").lower() in topics
+
+
 async def recommendations(
     db: AsyncSession, youtube_id: str, user_id: uuid.UUID | None, limit: int = 8
 ) -> list[tuple[Video, int | None]]:
-    """Related videos with a match % (cosine similarity to the current video)."""
+    """Related videos with a match % (cosine similarity to the current video), taken
+    only from the recommendation topics (LLMs, machine learning, data structures by
+    default) — whatever the current video is about."""
     current = await db.scalar(select(Video).where(Video.youtube_id == youtube_id))
     if current is None:
         return []
@@ -209,6 +226,7 @@ async def recommendations(
             .limit(20)
         )
         exclude |= set(recent)
+    eligible = (Video.embeddable.is_(True), _in_domain_clause())
     out: list[tuple[Video, int | None]] = []
     if current.embedding is not None:
         raw = Video.embedding.cosine_distance(current.embedding)
@@ -217,27 +235,50 @@ async def recommendations(
         dist = raw - case((Video.topic == current.topic, SAME_TOPIC_BONUS), else_=0.0)
         rows = await db.execute(
             select(Video, raw.label("d"))
-            .where(
-                Video.embedding.is_not(None),
-                Video.embeddable.is_(True),
-                Video.youtube_id.not_in(exclude),
-            )
+            .where(Video.embedding.is_not(None), Video.youtube_id.not_in(exclude), *eligible)
             .order_by(dist)
             .limit(limit)
         )
         out = [(v, match_percent(1 - d)) for v, d in rows.all()]
-    if len(out) < limit and current.topic:
+    if len(out) < limit:
+        # No embedding to compare (Ollama was down when it was stored): rank by
+        # words shared with the current title, same topic first — never random.
         have = exclude | {v.youtube_id for v, _ in out}
+        words = re.findall(r"[a-z0-9]{3,}", current.title.lower())[:12]
+        order = [case((Video.topic == current.topic, 0), else_=1)]
+        if words:
+            tsq = func.websearch_to_tsquery("english", " or ".join(words))
+            order.append(func.ts_rank_cd(Video.tsv, tsq).desc())
+        order.append(Video.title)
         out += [
             (v, None)
             for v in await db.scalars(
                 select(Video)
-                .where(Video.topic == current.topic, Video.youtube_id.not_in(have))
-                .order_by(func.random())
+                .where(Video.youtube_id.not_in(have), *eligible)
+                .order_by(*order)
                 .limit(limit - len(out))
             )
         ]
     return out
+
+
+async def rail(
+    db: AsyncSession, videos: list[Video], scores: dict[str, int], user_id: uuid.UUID | None
+) -> list[tuple[Video, int | None]]:
+    """A reply's Recommended rail (OTTAI-22): its other search results that are in
+    the recommendation topics, plus the recommendations for its main video, without
+    duplicates or the main video, best match first (unscored last)."""
+    if not videos:
+        return []
+    main = videos[0].youtube_id
+    out: dict[str, tuple[Video, int | None]] = {}
+    for v in videos[1:]:
+        if in_domain(v):
+            out.setdefault(v.youtube_id, (v, scores.get(v.youtube_id)))
+    for v, m in await recommendations(db, main, user_id):
+        if v.youtube_id != main:
+            out.setdefault(v.youtube_id, (v, m))
+    return sorted(out.values(), key=lambda p: -(p[1] or 0))
 
 
 # "0:00 Intro", "(1:02:03) Part two", "12:30 - Wrap up"

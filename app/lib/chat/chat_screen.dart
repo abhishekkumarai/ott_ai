@@ -7,6 +7,7 @@ import '../player/mini_player.dart';
 import '../player/player_overlay.dart';
 import '../settings/preferences.dart';
 import '../shell/history.dart';
+import '../shell/recommended_rail.dart';
 import '../shell/shortcuts.dart';
 import '../shell/side_nav.dart';
 import '../shell/top_bar.dart';
@@ -16,10 +17,13 @@ import 'chat_controller.dart';
 import 'models.dart';
 import 'quick_actions.dart';
 import 'reply.dart';
+import 'status_line.dart';
 import 'widgets.dart';
 
-/// Chat-first layout (OTTAI-4): the chat is always the main surface; a playing
-/// video floats in the mini-player, or takes over the column in theater mode.
+/// Chat-first layout (OTTAI-4): the chat is always the main surface. On desktop
+/// the Recommended rail sits on the right with the mini-player docked on top
+/// (OTTAI-23); on tablets the mini-player floats and the rail is a sheet; theater
+/// mode takes over the chat column.
 class ChatScreen extends ConsumerWidget {
   const ChatScreen({super.key});
 
@@ -35,6 +39,12 @@ class ChatScreen extends ConsumerWidget {
     final width = MediaQuery.sizeOf(context).width;
     final mobile = width < mobileBreakpoint;
     final navExpanded = width >= navExpandedBreakpoint;
+    final desktop = width >= railBreakpoint;
+    // The rail appears with the first reply that brings videos (or a video
+    // opened from search), before anything plays; until then the chat is full width.
+    final railOn =
+        desktop &&
+        ref.watch(chatProvider.select((s) => s.hasVideos || s.playerOpen));
 
     final main = Stack(
       fit: StackFit.expand,
@@ -46,8 +56,9 @@ class ChatScreen extends ConsumerWidget {
         ),
         if (theater) const Positioned.fill(child: PlayerOverlay()),
         // Only one of PlayerOverlay / MiniPlayer is mounted at a time, so the
-        // player view (GlobalKey) moves between them without reloading.
-        if (mini)
+        // player view (GlobalKey) moves between them without reloading. On
+        // desktop the mini-player is docked in the rail instead.
+        if (mini && !desktop)
           mobile
               ? const Positioned(
                   top: 8,
@@ -101,7 +112,21 @@ class ChatScreen extends ConsumerWidget {
                       child: Column(
                         children: [
                           const TopBar(),
-                          Expanded(child: main),
+                          Expanded(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Expanded(child: main),
+                                if (railOn) ...[
+                                  VerticalDivider(width: 1, color: cs.border),
+                                  const SizedBox(
+                                    width: railWidth,
+                                    child: RecommendedRail(),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -343,7 +368,9 @@ class _ChatBodyState extends ConsumerState<_ChatBody> {
                   // ← / → seek and Esc stops from the chat too.
                   playerKeys: s.playerOpen,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
+                const ChatStatusLine(),
+                const SizedBox(height: 2),
                 ShortcutHint(playing: s.playerOpen),
               ],
             ),
@@ -402,13 +429,15 @@ class _ScrollToTopButton extends StatelessWidget {
 class _EmptyState extends ConsumerWidget {
   const _EmptyState();
 
+  // The catalog (and every recommendation) is about LLMs, machine learning and
+  // data structures.
   static const _suggestions = [
-    'How do black holes form?',
-    'Sourdough bread for beginners',
-    'Learn basic guitar chords',
-    'Python in 15 minutes',
-    'Jazz piano explained',
-    'Home workout, no equipment',
+    'How do large language models work?',
+    'Transformers and attention',
+    'What is RAG?',
+    'Neural networks explained',
+    'Gradient descent, intuitively',
+    'Hash tables and binary search trees',
   ];
 
   @override

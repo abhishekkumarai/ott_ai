@@ -1,17 +1,13 @@
-"""Per-user account data: app settings (validated JSON on the user row) and the
-saved-videos library."""
+"""Per-user account data: app settings (validated JSON on the user row).
+Saves belong to chats (app.chat.router)."""
 
-from typing import Annotated, Literal
+from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Path, Request, Response
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
-from sqlalchemy import delete, select
-from sqlalchemy.dialects.postgresql import insert
 
 from app.config import get_settings
 from app.deps import DB, CurrentUser, limiter
-from app.models import SavedVideo, Video
-from app.videos.router import VideoOut
 
 router = APIRouter(prefix="/api/me", tags=["account"])
 
@@ -90,46 +86,3 @@ async def patch_preferences(request: Request, body: PreferencesPatch, db: DB, us
     user.preferences = prefs.model_dump()
     await db.commit()
     return prefs
-
-
-# ------------------------------------------------------------------ library (OTTAI-16)
-
-YoutubeId = Annotated[str, Path(pattern=r"^[A-Za-z0-9_-]{11}$")]
-MAX_SAVED = 500
-
-
-@router.get("/saved", response_model=list[VideoOut])
-async def saved_videos(db: DB, user: CurrentUser):
-    rows = await db.scalars(
-        select(Video)
-        .join(SavedVideo, SavedVideo.youtube_id == Video.youtube_id)
-        .where(SavedVideo.user_id == user.id)
-        .order_by(SavedVideo.created_at.desc())
-        .limit(MAX_SAVED)
-    )
-    return [VideoOut.of(v) for v in rows]
-
-
-@router.put("/saved/{youtube_id}", status_code=204)
-@limiter.limit("60/minute")
-async def save_video(request: Request, youtube_id: YoutubeId, db: DB, user: CurrentUser):
-    """Idempotent: saving twice keeps one entry."""
-    if await db.scalar(select(Video.id).where(Video.youtube_id == youtube_id)) is None:
-        raise HTTPException(404, "Unknown video")
-    await db.execute(
-        insert(SavedVideo)
-        .values(user_id=user.id, youtube_id=youtube_id)
-        .on_conflict_do_nothing(constraint="uq_saved_user_video")
-    )
-    await db.commit()
-    return Response(status_code=204)
-
-
-@router.delete("/saved/{youtube_id}", status_code=204)
-@limiter.limit("60/minute")
-async def unsave_video(request: Request, youtube_id: YoutubeId, db: DB, user: CurrentUser):
-    await db.execute(
-        delete(SavedVideo).where(SavedVideo.user_id == user.id, SavedVideo.youtube_id == youtube_id)
-    )
-    await db.commit()
-    return Response(status_code=204)

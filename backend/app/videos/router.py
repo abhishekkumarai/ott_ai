@@ -93,6 +93,9 @@ class SummaryIn(BaseModel):
 
 class SummaryOut(BaseModel):
     summary: str
+    model: str
+    prompt_tokens: int = 0
+    output_tokens: int = 0
 
 
 SUMMARY_SYSTEM = (
@@ -129,7 +132,7 @@ async def summary(
     excerpt = service.transcript_excerpt(service.parse_transcript(v.transcript), body.start_s, body.end_s)
     if len(excerpt) < 40:
         raise HTTPException(422, "Not enough transcript for that part")
-    data = await ollama.chat_json(
+    res = await ollama.chat_json(
         model,
         [
             {"role": "system", "content": SUMMARY_SYSTEM},
@@ -137,18 +140,31 @@ async def summary(
         ],
         SUMMARY_SCHEMA,
         num_predict=400,
+        num_ctx=await ollama.context_length(model),
     )
     # LLM output is untrusted: plain text, length-limited.
-    text = " ".join(str((data or {}).get("summary") or "").split())[:1500]
-    if not text:
+    text = " ".join(str((res.data if res else {}).get("summary") or "").split())[:1500]
+    if res is None or not text:
         raise HTTPException(503, "The AI model is offline; try again later")
     if conv is not None:
         label = body.label.strip() or v.title
         db.add(Message(conversation_id=conv.id, role="user", content=f"Summarize “{label}”"))
-        db.add(Message(conversation_id=conv.id, role="assistant", content=text))
+        db.add(
+            Message(
+                conversation_id=conv.id,
+                role="assistant",
+                content=text,
+                source="summary",
+                model=model,
+                prompt_tokens=res.prompt_tokens,
+                output_tokens=res.output_tokens,
+            )
+        )
         conv.updated_at = func.now()
         await db.commit()
-    return SummaryOut(summary=text)
+    return SummaryOut(
+        summary=text, model=model, prompt_tokens=res.prompt_tokens, output_tokens=res.output_tokens
+    )
 
 
 @router.post("/{youtube_id}/watched", status_code=204)

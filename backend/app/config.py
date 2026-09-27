@@ -39,7 +39,12 @@ class Settings(BaseSettings):
     allowed_models: list[str] = ["llama3.2:3b", "qwen3.5:4b", "llama3.1:latest"]
     default_model: str = "llama3.2:3b"
     embed_model: str = "nomic-embed-text:latest"
+    # Recommendations (the Recommended rail) only come from these catalog topics,
+    # matched case-insensitively; an empty list allows any topic.
+    recommend_topics: list[str] = ["LLMs", "machine learning", "data structures"]
     llm_timeout_s: float = 25.0
+    # Upper bound for the context window sent as num_ctx (and shown in the app).
+    llm_num_ctx: int = 4096
     max_login_failures: int = 5
     lockout_minutes: int = 15
     cors_origins: list[str] = []

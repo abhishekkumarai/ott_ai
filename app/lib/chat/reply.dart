@@ -6,6 +6,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../library/saved.dart';
 import '../settings/preferences.dart';
+import '../shell/recommended_rail.dart';
 import '../theme.dart';
 import '../widgets/tappable.dart';
 import 'chat_controller.dart';
@@ -16,7 +17,8 @@ import 'widgets.dart';
 const assistantName = 'OTT-AI Assistant';
 
 /// One assistant turn: header, reply text, and — when it found videos — the main
-/// video card, its key moments and the alternatives (OTTAI-5/6/7).
+/// video card and its key moments. Its recommendations are in the rail
+/// (desktop/tablet, OTTAI-23) or a "Recommended" block (phones, OTTAI-24).
 class AssistantReply extends ConsumerWidget {
   const AssistantReply({super.key, required this.message, required this.index});
   final ChatMessage message;
@@ -42,7 +44,10 @@ class AssistantReply extends ConsumerWidget {
           const SizedBox(height: 14),
           MainVideoCard(video: main),
           KeyMoments(video: main, replyIndex: index),
-          Alternatives(replyIndex: index),
+          if (MediaQuery.sizeOf(context).width < mobileBreakpoint)
+            ReplyRecommendations(replyIndex: index)
+          else
+            _ShowRecommendations(replyIndex: index),
         ],
       ],
     );
@@ -88,6 +93,7 @@ class _Header extends StatelessWidget {
               style: mono(context, size: 11, color: success),
             ),
           ),
+        if (!message.command) _Usage(message: message),
         if (message.source != null)
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -109,6 +115,77 @@ class _Header extends StatelessWidget {
             ],
           ),
       ],
+    );
+  }
+}
+
+/// "llama3.2:3b · 412 tok", or "no LLM" for keyword-fallback replies (OTTAI-27).
+class _Usage extends StatelessWidget {
+  const _Usage({required this.message});
+  final ChatMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    final model = message.model;
+    final label = model == null
+        ? 'no LLM'
+        : '$model · ${compactTokens(message.tokens)} tok';
+    return ShadTooltip(
+      builder: (_) => Text(
+        model == null
+            ? 'Answered by keyword search; no model tokens used'
+            : '${message.promptTokens} prompt + ${message.outputTokens} output tokens',
+      ),
+      child: Text(label, style: mono(context, size: 11)),
+    );
+  }
+}
+
+/// Earlier replies (desktop/tablet): "Show recommendations" loads theirs into the
+/// rail; on tablets it also opens the rail sheet.
+class _ShowRecommendations extends ConsumerWidget {
+  const _ShowRecommendations({required this.replyIndex});
+  final int replyIndex;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final latest = ref.watch(chatProvider.select((s) => s.latestReplyIndex));
+    final shown = ref.watch(chatProvider.select((s) => s.railIndex));
+    if (replyIndex == latest) return const SizedBox.shrink();
+    final sheet = MediaQuery.sizeOf(context).width < railBreakpoint;
+    if (shown == replyIndex && !sheet) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8, left: 4),
+        child: Row(
+          children: [
+            Icon(LucideIcons.panelRight, size: 14, color: coralOn(context)),
+            const SizedBox(width: 6),
+            Text(
+              'Shown in Recommended',
+              style: ShadTheme.of(
+                context,
+              ).textTheme.small.copyWith(color: coralOn(context)),
+            ),
+          ],
+        ),
+      );
+    }
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: ShadButton.link(
+          size: ShadButtonSize.sm,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          foregroundColor: coralOn(context),
+          leading: const Icon(LucideIcons.panelRight, size: 14),
+          onPressed: () {
+            ref.read(chatProvider.notifier).showRecommendationsFor(replyIndex);
+            if (sheet) showRecommendedSheet(context);
+          },
+          child: const Text('Show recommendations'),
+        ),
+      ),
     );
   }
 }
@@ -560,85 +637,89 @@ class _ChapterRow extends StatelessWidget {
   }
 }
 
-// ------------------------------------------------------------------ alternatives
+// ------------------------------------------------------------------ recommended (phones)
 
-/// Other answers to the question plus videos related to the one playing, with a
-/// match % where the server has one (OTTAI-7).
-class Alternatives extends ConsumerStatefulWidget {
-  const Alternatives({super.key, required this.replyIndex});
+/// Phones: the reply's recommendations as an in-chat block that starts closed
+/// (desktop and tablet show them in the rail instead, OTTAI-24).
+class ReplyRecommendations extends ConsumerStatefulWidget {
+  const ReplyRecommendations({super.key, required this.replyIndex});
   final int replyIndex;
 
   @override
-  ConsumerState<Alternatives> createState() => _AlternativesState();
+  ConsumerState<ReplyRecommendations> createState() =>
+      _ReplyRecommendationsState();
 }
 
-class _AlternativesState extends ConsumerState<Alternatives> {
+class _ReplyRecommendationsState extends ConsumerState<ReplyRecommendations> {
   bool _all = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Older replies have no stored list: look it up once.
+    Future.microtask(() {
+      if (mounted) {
+        ref
+            .read(chatProvider.notifier)
+            .ensureRecommendations(widget.replyIndex);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = ShadTheme.of(context);
     final s = ref.watch(chatProvider);
     if (widget.replyIndex >= s.messages.length) return const SizedBox.shrink();
-    final all = s.alternativesFor(widget.replyIndex);
-    if (all.isEmpty) return const SizedBox.shrink();
+    final all = s.recommendationsFor(widget.replyIndex);
+    final loading = s.loadingFor(widget.replyIndex);
+    if (all.isEmpty && !loading) return const SizedBox.shrink();
     final chat = ref.read(chatProvider.notifier);
     final shown = _all ? all : all.take(3).toList();
 
     return CollapsibleBlock(
-      stateKey: _blockKey(ref, widget.replyIndex, 'alternatives'),
+      stateKey: _blockKey(ref, widget.replyIndex, 'recommended'),
       defaultOpen: false,
       title: Row(
         children: [
-          Icon(LucideIcons.layers, size: 15, color: coralOn(context)),
+          Icon(LucideIcons.sparkles, size: 15, color: coralOn(context)),
           const SizedBox(width: 8),
           Text(
-            'Alternatives',
+            'Recommended',
             style: theme.textTheme.small.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(width: 8),
           Text(
-            '${all.length} ${all.length == 1 ? 'match' : 'matches'}',
+            loading ? 'finding…' : '${all.length} videos',
             style: theme.textTheme.muted.copyWith(fontSize: 12),
           ),
         ],
       ),
-      child: LayoutBuilder(
-        builder: (context, c) {
-          final cols = c.maxWidth >= 560 ? 3 : 2;
-          final w = (c.maxWidth - (cols - 1) * 4) / cols;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Wrap(
-                spacing: 4,
-                runSpacing: 4,
-                children: [
-                  for (final v in shown)
-                    SizedBox(
-                      width: w,
-                      child: VideoCard(
-                        video: v,
-                        active: s.nowPlaying?.youtubeId == v.youtubeId,
-                        onTap: () => chat.play(v),
-                      ),
-                    ),
-                ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final v in shown)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: RailRow(
+                video: v,
+                playing: s.nowPlaying?.youtubeId == v.youtubeId,
+                watched:
+                    s.nowPlaying?.youtubeId != v.youtubeId &&
+                    s.played.contains(v.youtubeId),
+                onTap: () => chat.play(v),
               ),
-              if (all.length > 3)
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: ShadButton.link(
-                    size: ShadButtonSize.sm,
-                    onPressed: () => setState(() => _all = !_all),
-                    child: Text(
-                      _all ? 'Show fewer' : 'View all ${all.length} matches',
-                    ),
-                  ),
-                ),
-            ],
-          );
-        },
+            ),
+          if (all.length > 3)
+            Align(
+              alignment: Alignment.centerRight,
+              child: ShadButton.link(
+                size: ShadButtonSize.sm,
+                onPressed: () => setState(() => _all = !_all),
+                child: Text(_all ? 'Show fewer' : 'View all ${all.length}'),
+              ),
+            ),
+        ],
       ),
     );
   }

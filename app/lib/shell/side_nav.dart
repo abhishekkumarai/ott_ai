@@ -128,7 +128,7 @@ class _SideNavState extends ConsumerState<SideNav> {
           placeholder: Text(
             _list == _List.chats
                 ? 'Search conversations…'
-                : 'Search saved videos…',
+                : 'Search this chat’s saves…',
           ),
           leading: Padding(
             padding: const EdgeInsets.only(right: 6),
@@ -233,7 +233,7 @@ class _SideNavState extends ConsumerState<SideNav> {
           icon(LucideIcons.history, 'History', widget.onHistory!),
         icon(
           LucideIcons.bookmark,
-          'Saved videos',
+          'Saved in this chat',
           () => showSavedSheet(context),
         ),
         const Spacer(),
@@ -329,7 +329,8 @@ class _ProfileCard extends ConsumerWidget {
   }
 }
 
-/// "Chats | Saved" segmented switch above the sidebar list (OTTAI-16).
+/// "Chats | Saved" segmented switch above the sidebar list; Saved is the open
+/// chat's saves (OTTAI-26).
 class _ListSwitch extends StatelessWidget {
   const _ListSwitch({
     required this.value,
@@ -393,14 +394,14 @@ class _ListSwitch extends StatelessWidget {
   }
 }
 
-/// Saved videos as a sheet (icon rail / phones).
+/// The open chat's saves as a sheet (icon rail / phones).
 void showSavedSheet(BuildContext context) {
   final width = MediaQuery.sizeOf(context).width;
   showShadSheet(
     context: context,
     side: ShadSheetSide.left,
     builder: (ctx) => ShadSheet(
-      title: const Text('Saved videos'),
+      title: const Text('Saved in this chat'),
       padding: const EdgeInsets.fromLTRB(12, 20, 8, 0),
       constraints: BoxConstraints(
         maxWidth: width < 420 ? width * .88 : navExpandedWidth + 24,

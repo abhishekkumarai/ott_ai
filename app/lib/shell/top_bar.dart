@@ -12,9 +12,11 @@ import '../settings/preferences.dart';
 import '../theme.dart';
 import '../widgets/tappable.dart';
 import 'history.dart';
+import 'recommended_rail.dart';
 import 'shortcuts.dart';
 
-/// Desktop top bar (OTTAI-11): global search, Theater Mode toggle, avatar.
+/// Desktop/tablet top bar (OTTAI-11): global search, the Recommended sheet
+/// (tablets, where there's no rail), Theater Mode toggle, avatar.
 class TopBar extends ConsumerWidget {
   const TopBar({super.key});
 
@@ -25,6 +27,9 @@ class TopBar extends ConsumerWidget {
     final playing = ref.watch(chatProvider.select((s) => s.playerOpen));
     final mode = ref.watch(playerModeProvider);
     final user = ref.watch(authProvider.select((a) => a.user));
+    final railSheet =
+        MediaQuery.sizeOf(context).width < railBreakpoint &&
+        ref.watch(chatProvider.select((s) => s.hasVideos));
     return DecoratedBox(
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: cs.border)),
@@ -44,6 +49,10 @@ class TopBar extends ConsumerWidget {
                   ),
                 ),
               ),
+              if (railSheet) ...[
+                const SizedBox(width: 12),
+                const RecommendedButton(),
+              ],
               const SizedBox(width: 12),
               ShadTooltip(
                 builder: (_) => Text(

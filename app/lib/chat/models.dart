@@ -43,21 +43,48 @@ class Video {
 enum Role { user, assistant }
 
 /// Where a reply's videos came from.
-enum VideoSource { catalog, youtube, none }
+enum VideoSource {
+  catalog,
+  youtube,
+  none;
+
+  /// Only the two sources the header labels; anything else is null.
+  static VideoSource? parse(Object? s) => switch (s) {
+    'catalog' => catalog,
+    'youtube' => youtube,
+    _ => null,
+  };
+}
+
+List<Video> _videos(Object? list) => [
+  for (final v in (list as List? ?? const []))
+    Video.fromJson(v as Map<String, dynamic>),
+];
+
+int _count(Object? v) => v is num && v >= 0 ? v.toInt() : 0;
 
 class ChatMessage {
   const ChatMessage({
     required this.role,
     required this.text,
     this.videos = const [],
+    this.recommendations,
     this.pending = false,
     this.highlights = const [],
     this.latencyMs,
     this.source,
+    this.command = false,
+    this.model,
+    this.promptTokens = 0,
+    this.outputTokens = 0,
   });
   final Role role;
   final String text;
   final List<Video> videos;
+
+  /// The reply's Recommended rail as stored by the server (OTTAI-22); null for
+  /// replies made before it was stored (the app then asks per video).
+  final List<Video>? recommendations;
   final bool pending;
 
   /// Key phrases to emphasise; always substrings of [text] (checked server-side).
@@ -67,14 +94,80 @@ class ChatMessage {
   final int? latencyMs;
   final VideoSource? source;
 
+  /// A player command's reply ("Paused.") — no model or tokens involved.
+  final bool command;
+
+  /// The model that wrote this reply; null when no LLM did (keyword fallback).
+  final String? model;
+  final int promptTokens;
+  final int outputTokens;
+
+  int get tokens => promptTokens + outputTokens;
+
   factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
     role: j['role'] == 'user' ? Role.user : Role.assistant,
     text: j['content'] as String? ?? '',
-    videos: [
-      for (final v in (j['videos'] as List? ?? const []))
-        Video.fromJson(v as Map<String, dynamic>),
-    ],
+    videos: _videos(j['videos']),
+    recommendations: j['recommendations'] == null
+        ? null
+        : _videos(j['recommendations']),
+    source: VideoSource.parse(j['source']),
+    command: j['source'] == 'command',
+    model: j['model'] as String?,
+    promptTokens: _count(j['prompt_tokens']),
+    outputTokens: _count(j['output_tokens']),
   );
+}
+
+/// An Ollama model the server allows, with the context window it is run with.
+class ModelInfo {
+  const ModelInfo(this.name, this.context);
+  final String name;
+
+  /// Tokens (num_ctx); 0 when unknown.
+  final int context;
+
+  factory ModelInfo.fromJson(Object? j) => j is Map
+      ? ModelInfo(j['name'] as String, _count(j['context']))
+      : ModelInfo(j as String, 0);
+}
+
+/// The chat's context meter and totals (OTTAI-27), as last reported by the server.
+class ChatUsage {
+  const ChatUsage({
+    this.contextTokens = 0,
+    this.contextLimit = 0,
+    this.historyWindow = 6,
+    this.trimmed = false,
+  });
+
+  /// Estimated prompt size the next request starts from.
+  final int contextTokens;
+  final int contextLimit;
+
+  /// Only this many recent messages are sent to the model.
+  final int historyWindow;
+
+  /// Older messages had to be dropped to fit the context window.
+  final bool trimmed;
+
+  factory ChatUsage.fromJson(Map<String, dynamic> j) => ChatUsage(
+    contextTokens: _count(j['context_tokens']),
+    contextLimit: _count(j['context_limit']),
+    historyWindow: _count(j['history_window']),
+    trimmed: j['trimmed'] == true,
+  );
+}
+
+/// Context windows the way models name them: 4096 → 4k, 131072 → 128k.
+String compactContext(int n) =>
+    n >= 1024 && n % 1024 == 0 ? '${n ~/ 1024}k' : compactTokens(n);
+
+/// 412 · 1.2k · 34k
+String compactTokens(int n) {
+  if (n < 1000) return '$n';
+  final k = (n / 1000).toStringAsFixed(n < 10000 ? 1 : 0);
+  return '${k.endsWith('.0') ? k.substring(0, k.length - 2) : k}k';
 }
 
 enum ActionType {
@@ -138,16 +231,21 @@ class Conversation {
     required this.id,
     required this.title,
     required this.updatedAt,
+    this.tokens = 0,
   });
   final String id;
   final String title;
   final DateTime updatedAt;
+
+  /// Prompt plus output tokens used in the whole chat.
+  final int tokens;
 
   factory Conversation.fromJson(Map<String, dynamic> j) => Conversation(
     id: j['id'] as String,
     title: j['title'] as String? ?? 'Chat',
     updatedAt:
         DateTime.tryParse(j['updated_at'] as String? ?? '') ?? DateTime.now(),
+    tokens: _count(j['prompt_tokens']) + _count(j['output_tokens']),
   );
 }
 

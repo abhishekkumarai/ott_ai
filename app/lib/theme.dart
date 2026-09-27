@@ -19,6 +19,9 @@ const coralSoftBorder = Color(0xFFFFB4A5);
 const success = Color(0xFF406840);
 const successSoft = Color(0xFFC1EEBC);
 
+/// Context meter above 75% (OTTAI-27); coral takes over above 90%.
+const warning = Color(0xFFB26A00);
+
 /// Playback progress, the listening mic and other "live" indicators.
 const accent = coral;
 
@@ -142,5 +145,11 @@ const navExpandedBreakpoint = 1100.0;
 const navExpandedWidth = 272.0;
 const navRailWidth = 68.0;
 
-/// Floating mini-player card width (desktop); phones use the column width.
+/// At/above this the Recommended rail is a column on the right, with the
+/// mini-player docked at its top (OTTAI-23). Below it the rail is a sheet
+/// (tablet) or an in-chat block per reply (phone).
+const railBreakpoint = 1024.0;
+const railWidth = 380.0;
+
+/// Floating mini-player card width (tablet); phones use the column width.
 const miniPlayerWidth = 420.0;

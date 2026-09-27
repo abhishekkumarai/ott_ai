@@ -143,6 +143,19 @@ class Message(Base):
     role: Mapped[str] = mapped_column(String(10), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     video_ids: Mapped[list[str]] = mapped_column(ARRAY(String(11)), default=list, nullable=False)
+    # The reply's Recommended rail (OTTAI-22): [{"youtube_id", "match"}], best first.
+    # NULL for replies made before it was stored (the app then asks per video).
+    recommendations: Mapped[list[dict] | None] = mapped_column(JSONB)
+    # How an assistant reply was made: command, catalog, youtube, none, chat or summary.
+    source: Mapped[str | None] = mapped_column(String(10))
+    # Model and Ollama token counts for replies the LLM wrote (OTTAI-27); NULL/0 otherwise.
+    model: Mapped[str | None] = mapped_column(String(60))
+    prompt_tokens: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    output_tokens: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
     created_at: Mapped[datetime] = _created()
 
 
@@ -157,13 +170,19 @@ class WatchHistory(Base):
 
 
 class SavedVideo(Base):
-    """A user's library ("Save to practice routine")."""
+    """A video saved in one chat (OTTAI-25); deleted with the chat."""
 
     __tablename__ = "saved_videos"
-    __table_args__ = (UniqueConstraint("user_id", "youtube_id", name="uq_saved_user_video"),)
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "youtube_id", name="uq_saved_conversation_video"),
+    )
     id: Mapped[uuid.UUID] = _uuid()
+    # Kept for ownership checks alongside the conversation's own user_id.
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), index=True, nullable=False
     )
     youtube_id: Mapped[str] = mapped_column(
         ForeignKey("videos.youtube_id", ondelete="CASCADE"), nullable=False

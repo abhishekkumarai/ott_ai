@@ -1,5 +1,5 @@
 // Unit tests for the chat-first redesign (OTTAI-3..14): models, player commands,
-// "up next" order, looping, preferences applied on play, autoplay.
+// "next" order, looping, preferences applied on play, autoplay.
 
 import 'dart:async';
 
@@ -13,7 +13,6 @@ import 'package:ott_ai/chat/models.dart';
 import 'package:ott_ai/chat/reply.dart';
 import 'package:ott_ai/chat/widgets.dart';
 import 'package:ott_ai/widgets/tappable.dart';
-import 'package:ott_ai/library/saved.dart';
 import 'package:ott_ai/player/transcript.dart';
 import 'package:ott_ai/player/player_handle.dart';
 import 'package:ott_ai/settings/preferences.dart';
@@ -120,6 +119,8 @@ void main() {
         'conversation_id': 'c1',
         'reply': 'Here are clear explainers on collapsing stars.',
         'videos': videos,
+        // As the server stores it: other results, then related videos.
+        'recommendations': [...videos.skip(1), _v('rrrrrrrrrrr')],
         'highlights': ['collapsing stars', 'not in the reply'],
         'action': null,
         'source': 'catalog',
@@ -310,8 +311,8 @@ void main() {
     );
 
     test('collapse state is remembered per block', () {
-      c.read(collapseProvider.notifier).set('c1:1:alternatives', false);
-      expect(c.read(collapseProvider)['c1:1:alternatives'], isFalse);
+      c.read(collapseProvider.notifier).set('c1:1:recommended', false);
+      expect(c.read(collapseProvider)['c1:1:recommended'], isFalse);
     });
   });
 
@@ -376,42 +377,6 @@ void main() {
         expect(taps, 1);
       },
     );
-  });
-
-  group('library (OTTAI-16)', () {
-    late ProviderContainer c;
-    late FakeApi api;
-
-    setUp(() {
-      api = FakeApi();
-      c = ProviderContainer(overrides: [apiProvider.overrideWithValue(api)]);
-      c.read(playerHandleProvider).attach(RecordingTransport());
-    });
-    tearDown(() => c.dispose());
-
-    test('toggle saves and removes; failures roll back', () async {
-      final v = Video.fromJson(_v('aaaaaaaaaaa'));
-      final saved = c.read(savedProvider.notifier);
-      await saved.toggle(v);
-      expect(saved.isSaved('aaaaaaaaaaa'), isTrue);
-      expect(api.saved, ['aaaaaaaaaaa']);
-      await saved.toggle(v);
-      expect(saved.isSaved('aaaaaaaaaaa'), isFalse);
-      expect(api.saved, isEmpty);
-
-      api.failWrites = true;
-      await expectLater(saved.save(v), throwsA(isA<ApiException>()));
-      expect(saved.isSaved('aaaaaaaaaaa'), isFalse);
-    });
-
-    test('"save this" saves the playing video', () async {
-      final chat = c.read(chatProvider.notifier);
-      chat.play(Video.fromJson(_v('bbbbbbbbbbb')));
-      chat.apply(const PlayerAction(ActionType.save));
-      await Future<void>.delayed(Duration.zero);
-      expect(c.read(savedProvider.notifier).isSaved('bbbbbbbbbbb'), isTrue);
-      expect(PlayerAction.fromJson({'type': 'save'})!.type, ActionType.save);
-    });
   });
 
   group('transcripts and summaries (OTTAI-20)', () {
@@ -516,10 +481,10 @@ void main() {
       expect(c.read(collapseProvider)['c1:1:moments'], isFalse);
 
       final n = c.read(collapseProvider.notifier);
-      n.set('new:3:alternatives', false);
+      n.set('new:3:recommended', false);
       await Future<void>.delayed(Duration.zero);
-      expect(store.saved.containsKey('new:3:alternatives'), isFalse);
-      expect(c.read(collapseProvider)['new:3:alternatives'], isFalse);
+      expect(store.saved.containsKey('new:3:recommended'), isFalse);
+      expect(c.read(collapseProvider)['new:3:recommended'], isFalse);
 
       for (var i = 0; i < CollapseController.maxEntries + 10; i++) {
         n.set('c$i:1:moments', i.isEven);

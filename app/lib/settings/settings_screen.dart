@@ -201,11 +201,20 @@ class _ModelSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final models = ref.watch(chatProvider.select((s) => s.models));
-    final model = ref.watch(chatProvider.select((s) => s.model));
+    final models = [
+      for (final m in ref.watch(chatProvider.select((s) => s.models))) m.name,
+    ];
+    // The default for new chats; a chat can switch its own model in the chat box.
+    final saved = ref.watch(preferencesProvider.select((p) => p.model));
+    final fallback = ref.watch(
+      chatProvider.select((s) => s.defaultModel ?? s.model),
+    );
+    final model = models.contains(saved) ? saved : fallback;
     return _Section(
       title: 'AI model',
-      description: 'Runs locally with Ollama. Smaller models answer faster.',
+      description:
+          'Runs locally with Ollama. Smaller models answer faster. This is the '
+          'default for new chats; switch a chat’s model under its message box.',
       children: [
         if (models.isEmpty)
           Text(
@@ -287,7 +296,7 @@ class _PlaybackSection extends ConsumerWidget {
       children: [
         _Row(
           label: 'Autoplay next video',
-          sublabel: 'When a video ends, play the next alternative.',
+          sublabel: 'When a video ends, play the top unwatched recommendation.',
           control: ShadSwitch(
             value: p.autoplayNext,
             onChanged: (v) => _save(context, ref, {'autoplay_next': v}),

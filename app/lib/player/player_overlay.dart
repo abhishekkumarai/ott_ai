@@ -11,7 +11,6 @@ import '../chat/quick_actions.dart';
 import '../chat/reply.dart';
 import '../chat/widgets.dart';
 import '../settings/preferences.dart';
-import '../shell/recommendations.dart';
 import '../theme.dart';
 import 'player_controls.dart';
 import 'player_handle.dart';
@@ -66,12 +65,9 @@ class _Main extends ConsumerWidget {
   final FocusNode composerFocus;
 
   // Approximate fixed heights used to budget the player (see LayoutBuilder below).
+  // Recommendations live in the rail (desktop) or its sheet (tablet), not here.
   static const _controlsH = 70.0;
   static const _metaH = 52.0;
-
-  /// Header (~34) + strip of 176px-wide cards: 16:9 thumb (≈92) + meta (≈58) + padding.
-  static const _stripH = 172.0;
-  static const _recsH = _stripH + 34;
   static const _composerH = 110.0;
 
   /// Room for the latest question + reply without clipping the question.
@@ -98,13 +94,11 @@ class _Main extends ConsumerWidget {
         final topPad = compact ? 0.0 : 16.0;
         // Drop optional sections on short screens instead of overflowing.
         final showMeta = c.maxHeight >= 420;
-        final showRecs = c.maxHeight >= 640;
         final fixed =
             topPad +
             _controlsH +
             (hasError ? 22 : 0) +
             (showMeta ? _metaH : 0) +
-            (showRecs ? _recsH : 0) +
             _composerH +
             _minTranscriptH;
         final playerW = c.maxWidth - (compact ? 0 : 2 * hPad);
@@ -176,21 +170,6 @@ class _Main extends ConsumerWidget {
                         ],
                       ),
                     ),
-                  if (showRecs) ...[
-                    Padding(
-                      padding: EdgeInsets.fromLTRB(pad + 4, 12, pad, 6),
-                      child: Text(
-                        'Up next',
-                        style: theme.textTheme.small.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(
-                      height: _stripH,
-                      child: Recommendations(strip: true),
-                    ),
-                  ],
                   Expanded(
                     // Fade the top edge so partially scrolled messages don't look cut off.
                     child: ShaderMask(

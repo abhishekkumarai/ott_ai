@@ -10,13 +10,15 @@ import '../theme.dart';
 import 'player_controls.dart';
 import 'transcript.dart';
 
-/// Floating card that keeps the video playing while the chat is in front (OTTAI-3).
+/// Keeps the video playing while the chat is in front (OTTAI-3).
 ///
-/// [compact] (phones) is a strip: small video on the left, title and controls on
-/// the right. Otherwise a ~420px picture-in-picture card, top-right.
+/// [docked] (desktop): at the top of the Recommended rail (OTTAI-23).
+/// [compact] (phones): a strip, small video on the left, title and controls on
+/// the right. Otherwise (tablets) a ~420px floating card, top-right.
 class MiniPlayer extends ConsumerWidget {
-  const MiniPlayer({super.key, this.compact = false});
+  const MiniPlayer({super.key, this.compact = false, this.docked = false});
   final bool compact;
+  final bool docked;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -29,15 +31,17 @@ class MiniPlayer extends ConsumerWidget {
     return ShadCard(
       key: const ValueKey('mini-player'),
       padding: EdgeInsets.zero,
-      radius: BorderRadius.circular(18),
+      radius: BorderRadius.circular(docked ? 16 : 18),
       clipBehavior: Clip.antiAlias,
-      shadows: const [
-        BoxShadow(
-          color: Color(0x2E000000),
-          blurRadius: 32,
-          offset: Offset(0, 12),
-        ),
-      ],
+      shadows: docked
+          ? const []
+          : const [
+              BoxShadow(
+                color: Color(0x2E000000),
+                blurRadius: 32,
+                offset: Offset(0, 12),
+              ),
+            ],
       child: compact
           ? _strip(context, video, view)
           : _card(context, video, view),

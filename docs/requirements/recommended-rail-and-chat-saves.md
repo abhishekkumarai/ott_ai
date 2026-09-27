@@ -1,6 +1,6 @@
 # Requirements: Recommended rail, per-chat Save, model and token usage
 
-Status: proposed · Jira Epic OTTAI-21 · stories OTTAI-22 (store recommendations), OTTAI-23 (rail), OTTAI-24 (earlier replies, tablet, phone), OTTAI-25 (backend saves), OTTAI-26 (Save button), OTTAI-27 (model and tokens)
+Status: implemented (2026-09-27; migration `e8f2a4c6b310`) · Jira Epic OTTAI-21 · stories OTTAI-22 (store recommendations), OTTAI-23 (rail), OTTAI-24 (earlier replies, tablet, phone), OTTAI-25 (backend saves), OTTAI-26 (Save button), OTTAI-27 (model and tokens)
 
 This follows the redesign in [design.md](../../design.md). It changes three things:
 

@@ -2,6 +2,7 @@
 
 import json
 import logging
+from dataclasses import dataclass
 
 import httpx
 
@@ -54,9 +55,25 @@ async def installed_models() -> set[str]:
         return set()
 
 
+@dataclass
+class ChatResult:
+    """Parsed JSON content plus Ollama's own token counts for the request."""
+
+    data: dict
+    prompt_tokens: int = 0
+    output_tokens: int = 0
+
+
 async def chat_json(
-    model: str, messages: list[dict], schema: dict, num_predict: int = 200
-) -> dict | None:
+    model: str,
+    messages: list[dict],
+    schema: dict,
+    num_predict: int = 200,
+    num_ctx: int | None = None,
+) -> ChatResult | None:
+    options: dict = {"temperature": 0.3, "num_predict": num_predict}
+    if num_ctx:
+        options["num_ctx"] = num_ctx
     try:
         r = await client().post(
             "/api/chat",
@@ -67,11 +84,62 @@ async def chat_json(
                 "stream": False,
                 "think": False,
                 "keep_alive": "30m",
-                "options": {"temperature": 0.3, "num_predict": num_predict},
+                "options": options,
             },
         )
         r.raise_for_status()
-        return json.loads(r.json()["message"]["content"])
+        body = r.json()
+        data = json.loads(body["message"]["content"])
+        if not isinstance(data, dict):
+            raise ValueError("not a JSON object")
+        return ChatResult(
+            data=data,
+            prompt_tokens=_count(body.get("prompt_eval_count")),
+            output_tokens=_count(body.get("eval_count")),
+        )
     except (httpx.HTTPError, KeyError, ValueError) as e:
         log.warning("chat failed (%s): %s", model, e)
         return None
+
+
+def _count(v: object) -> int:
+    return v if isinstance(v, int) and v >= 0 else 0
+
+
+# ------------------------------------------------------------------ context length
+
+_context: dict[str, int] = {}
+
+
+def parse_context(info: dict) -> int | None:
+    """Context window from an /api/show payload: the Modelfile's num_ctx when set,
+    else the model's native ``<arch>.context_length``."""
+    for line in str(info.get("parameters") or "").splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[0] == "num_ctx" and parts[1].isdigit():
+            return int(parts[1])
+    model_info = info.get("model_info")
+    if isinstance(model_info, dict):
+        for key, value in model_info.items():
+            if key.endswith(".context_length") and isinstance(value, int) and value > 0:
+                return value
+    return None
+
+
+async def context_length(model: str) -> int:
+    """Tokens the app budgets (and sends as num_ctx) for [model]: what Ollama reports,
+    capped at ``llm_num_ctx`` so a 128k-native model doesn't allocate a huge KV cache.
+    Cached per model once known."""
+    cap = get_settings().llm_num_ctx
+    if model in _context:
+        return _context[model]
+    try:
+        r = await client().post("/api/show", json={"model": model}, timeout=5)
+        r.raise_for_status()
+        native = parse_context(r.json())
+    except (httpx.HTTPError, ValueError) as e:
+        log.warning("context length unavailable (%s): %s", model, e)
+        return cap  # not cached: try again next time
+    ctx = min(native, cap) if native else cap
+    _context[model] = ctx
+    return ctx

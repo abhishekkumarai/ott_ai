@@ -1,6 +1,6 @@
 # OTT-AI — a video chatbot
 
-Ask about a topic and get free YouTube videos in the chat; pick one to play it right there, with its key moments and alternatives.
+Ask about a topic and get free YouTube videos in the chat; pick one to play it right there, with its key moments and a rail of recommended videos.
 Control playback by typing, speaking or using the keyboard:
 
 | Say / type | Effect |
@@ -13,14 +13,22 @@ Control playback by typing, speaking or using the keyboard:
 | `loop this part`, `loop 3:40 to 5:10` | repeat the current chapter (or a range) |
 | `stop looping` | end the loop |
 | `mute` / `unmute` | sound off / on |
-| `save this` | add the playing video to your library (sidebar › Saved) |
+| `save this` | save the playing video to this chat (sidebar › Saved) |
 
-Videos play in a floating **mini player** so the chat stays in front; **theater mode** gives a large player.
-Replies show the video's **key moments** (chapters from the description; click to seek) and **alternatives**
-with a match %. Admins can paste chapters and a transcript per catalog video (admin page › Chapters & transcript);
-then the player shows a **Transcript** (click a line to jump) and “**Summarize this part**” asks the local model.
-Save videos to a per-user library (sidebar › Saved). Settings (model, player mode, playback,
-voice, appearance, account) are saved per user; which reply blocks you collapsed is remembered on the device.
+Videos play in a **mini player** so the chat stays in front; **theater mode** gives a large player.
+Replies show the video's **key moments** (chapters from the description; click to seek). Related videos, with a
+match %, fill the **Recommended** rail on the right, with the mini-player docked on top (desktop); on tablets the rail
+is a sheet (top bar › Recommended) and on phones each reply has a collapsible Recommended block. The rail follows the
+latest reply; "Show recommendations" on an earlier reply swaps it, "Back to latest" returns. Each reply's list is
+stored with it, so reopened chats show theirs straight away. Admins can paste chapters and a transcript per catalog
+video (admin page › Chapters & transcript); then the player shows a **Transcript** (click a line to jump) and
+“**Summarize this part**” asks the local model.
+**Save** keeps a video in the current chat (sidebar › Saved lists this chat's saves; deleting the chat deletes them).
+Under the message box: the chat's **model** (click to switch it for this chat), a **context meter** for the next
+request (only the last 6 messages are sent; the oldest are dropped first if they'd overflow 90% of the window) and
+the **tokens used** in the chat, as Ollama counted them; each reply shows its own model and token count.
+Settings (default model, player mode, playback, voice, appearance, account) are saved per user; which reply blocks
+you collapsed is remembered on the device.
 
 Keyboard (when not typing): `Space` play/pause · `M` mute · `←`/`→` seek · `N` next · `I` mini player ·
 `T` theater · `F` fullscreen (web) · `Esc` stop · `Ctrl/⌘+K` search · `Ctrl/⌘+N` new session · `?` all shortcuts.
@@ -47,11 +55,18 @@ Prerequisites on the host: Postgres 16 with `pgvector`, Ollama with `llama3.2:3b
 python backend/scripts/make_env.py      # .env from the machine DATABASE_URL + /ott_ai_db (the system var is not modified)
 # one-time: CREATE DATABASE ott_ai_db;  (extensions are created by the migration)
 docker compose up -d --build            # http://localhost:8088  (OTT_WEB_PORT to change)
-docker compose exec api python -m app.cli seed                    # load seed/catalog.json (48 curated videos)
+docker compose exec api python -m app.cli seed                    # load seed/catalog.json (99 curated videos)
 docker compose exec api python -m app.cli create-admin you@example.com   # admin page: /admin/
 ```
 
 Routes: `/` landing · `/app/` Flutter app · `/app/#/demo` instant demo · `/admin/` catalog admin · `/api/*` API.
+
+Recommendations only come from the catalog topics in `OTT_RECOMMEND_TOPICS` (default `["LLMs", "machine learning",
+"data structures"]`, 17 curated videos each; `[]` allows any topic), ranked by similarity to the video.
+
+The context window each model is run with comes from Ollama (`/api/show`), capped by `OTT_LLM_NUM_CTX`
+(default 4096) and sent as `num_ctx`, so the app's meter shows the limit really used. Saves live under
+`/api/conversations/{id}/saved`; the migration to per-chat saves deletes the old global ones.
 
 **Try the demo** (landing page and sign-in screen) calls `POST /api/auth/demo`, which creates a throwaway account
 (`demo-…@demo.invalid`, random unusable password, never admin). Its session and all its chats are deleted 24 h after

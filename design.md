@@ -180,6 +180,11 @@ The Flutter app is built on [`shadcn_ui`](https://pub.dev/packages/shadcn_ui) (0
 
 **Allowed exception:** loading spinners. shadcn 0.57.1 has no spinner, so `CircularProgressIndicator` stays (`main.dart`, `auth/login_screen.dart`, `auth/demo_screen.dart`, send button in `chat/widgets.dart`, `shell/history.dart`), colored from `ShadTheme` tokens.
 
-## 7. Next: Recommended rail, per-chat saves, token usage
+## 7. Recommended rail, per-chat saves, token usage (built)
+
+The right-panel idea returns as a **Recommended rail** on desktop (mini-player docked on top, list below), a sheet on
+tablets and an in-chat block on phones; it replaces §3.4 Alternatives and the Up next strip. Saves are per chat and
+the composer shows the model, context meter and tokens used.
+
 
 Requirements: [docs/requirements/recommended-rail-and-chat-saves.md](docs/requirements/recommended-rail-and-chat-saves.md).

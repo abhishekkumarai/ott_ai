@@ -230,10 +230,14 @@ class ChatState {
     this.conversationId,
     this.sending = false,
     this.models = const [],
+    this.defaultModel,
     this.model,
+    this.baseContext = 0,
+    this.usage,
     this.nowPlaying,
-    this.recommendations = const [],
-    this.loadingRecommendations = false,
+    this.railReply,
+    this.related = const {},
+    this.loadingRelated = const {},
     this.played = const {},
     this.error,
   });
@@ -241,71 +245,139 @@ class ChatState {
   final List<ChatMessage> messages;
   final String? conversationId;
   final bool sending;
-  final List<String> models;
-  final String? model;
-  final Video? nowPlaying;
-  final List<Video> recommendations;
-  final bool loadingRecommendations;
+  final List<ModelInfo> models;
 
-  /// Videos already played in this chat (skipped by "next").
+  /// The server's default model (used when no preference is saved).
+  final String? defaultModel;
+
+  /// The model answering in this chat (switchable per chat, OTTAI-27).
+  final String? model;
+
+  /// Context meter of a chat with nothing sent yet.
+  final int baseContext;
+  final ChatUsage? usage;
+  final Video? nowPlaying;
+
+  /// An earlier reply whose recommendations the rail shows ("Show
+  /// recommendations"); null = the latest reply with videos (OTTAI-24).
+  final int? railReply;
+
+  /// Related videos per video id, looked up for replies that have no stored
+  /// recommendations (made before they were stored); kept for the session.
+  final Map<String, List<Video>> related;
+  final Set<String> loadingRelated;
+
+  /// Videos already played in this chat (skipped by "next", "Watched" on the rail).
   final Set<String> played;
   final String? error;
 
   bool get playerOpen => nowPlaying != null;
 
+  bool get hasVideos => latestReplyIndex != null;
+
+  /// The newest assistant reply with videos.
+  int? get latestReplyIndex {
+    for (var i = messages.length - 1; i >= 0; i--) {
+      final m = messages[i];
+      if (m.role == Role.assistant && m.videos.isNotEmpty) return i;
+    }
+    return null;
+  }
+
+  /// The reply the Recommended rail shows.
+  int? get railIndex {
+    final r = railReply;
+    if (r != null && r < messages.length && messages[r].videos.isNotEmpty) {
+      return r;
+    }
+    return latestReplyIndex;
+  }
+
+  /// The rail shows an earlier reply rather than the latest one.
+  bool get railShowsEarlier {
+    final i = railIndex;
+    return i != null && i != latestReplyIndex;
+  }
+
   /// Index of the assistant reply the playing video belongs to (else the latest
   /// reply with videos). Its blocks are the "live" ones.
   int? get activeReplyIndex {
-    int? latest;
-    for (var i = messages.length - 1; i >= 0; i--) {
-      final m = messages[i];
-      if (m.role != Role.assistant || m.videos.isEmpty) continue;
-      latest ??= i;
-      if (nowPlaying != null &&
-          m.videos.any((v) => v.youtubeId == nowPlaying!.youtubeId)) {
-        return i;
+    if (nowPlaying != null) {
+      for (var i = messages.length - 1; i >= 0; i--) {
+        final m = messages[i];
+        if (m.role == Role.assistant &&
+            m.videos.any((v) => v.youtubeId == nowPlaying!.youtubeId)) {
+          return i;
+        }
       }
     }
-    return latest;
+    return latestReplyIndex;
   }
 
-  /// Alternatives for a reply: its other search results, plus (for the live reply)
-  /// videos related to the one playing, highest match first within each group.
-  List<Video> alternativesFor(int index) {
-    final reply = messages[index].videos;
-    final main = reply.firstOrNull;
-    final seen = <String>{?main?.youtubeId, ?nowPlaying?.youtubeId};
-    final out = <Video>[];
-    for (final v in reply.skip(1)) {
-      if (seen.add(v.youtubeId)) out.add(v);
+  /// Recommendations for reply [index]: stored with the reply, else its other
+  /// search results plus the videos related to its main one — no duplicates,
+  /// main video left out, best match first.
+  List<Video> recommendationsFor(int index) {
+    if (index < 0 || index >= messages.length) return const [];
+    final m = messages[index];
+    final main = m.videos.firstOrNull;
+    if (main == null) return const [];
+    final stored = m.recommendations;
+    if (stored != null) {
+      return [
+        for (final v in stored)
+          if (v.youtubeId != main.youtubeId) v,
+      ];
     }
-    if (index == activeReplyIndex) {
-      for (final v in recommendations) {
-        if (seen.add(v.youtubeId)) out.add(v);
-      }
-    }
-    return out;
+    return mergeRecommendations(m.videos, related[main.youtubeId] ?? const []);
   }
 
-  /// What "next" plays: unplayed alternatives of the live reply.
-  List<Video> get upNext {
-    final i = activeReplyIndex;
-    final base = i == null ? recommendations : alternativesFor(i);
-    return [
-      for (final v in base)
-        if (!played.contains(v.youtubeId)) v,
-    ];
+  /// Still waiting for the related videos of reply [index].
+  bool loadingFor(int index) {
+    if (index < 0 || index >= messages.length) return false;
+    final m = messages[index];
+    final main = m.videos.firstOrNull;
+    return m.recommendations == null &&
+        main != null &&
+        loadingRelated.contains(main.youtubeId);
   }
+
+  List<Video> get rail {
+    final i = railIndex;
+    return i == null ? const [] : recommendationsFor(i);
+  }
+
+  /// What "next" plays: the rail's unplayed rows, top first.
+  List<Video> get upNext => [
+    for (final v in rail)
+      if (!played.contains(v.youtubeId) && v.youtubeId != nowPlaying?.youtubeId)
+        v,
+  ];
+
+  /// Tokens used in this chat (prompt plus output, as Ollama reported them).
+  int get tokensUsed => messages.fold(0, (sum, m) => sum + m.tokens);
+
+  /// Context window of the chat's model.
+  int get contextLimit {
+    final known = models.where((m) => m.name == model).firstOrNull?.context;
+    return (known ?? 0) > 0 ? known! : (usage?.contextLimit ?? 0);
+  }
+
+  int get contextTokens => usage?.contextTokens ?? baseContext;
 
   ChatState copyWith({
     List<ChatMessage>? messages,
     Object? conversationId = _keep,
     bool? sending,
-    List<String>? models,
+    List<ModelInfo>? models,
+    Object? defaultModel = _keep,
     Object? model = _keep,
+    int? baseContext,
+    Object? usage = _keep,
     Object? nowPlaying = _keep,
-    List<Video>? recommendations,
-    bool? loadingRecommendations,
+    Object? railReply = _keep,
+    Map<String, List<Video>>? related,
+    Set<String>? loadingRelated,
     Set<String>? played,
     Object? error = _keep,
   }) => ChatState(
@@ -315,17 +387,40 @@ class ChatState {
         : conversationId as String?,
     sending: sending ?? this.sending,
     models: models ?? this.models,
+    defaultModel: defaultModel == _keep
+        ? this.defaultModel
+        : defaultModel as String?,
     model: model == _keep ? this.model : model as String?,
+    baseContext: baseContext ?? this.baseContext,
+    usage: usage == _keep ? this.usage : usage as ChatUsage?,
     nowPlaying: nowPlaying == _keep ? this.nowPlaying : nowPlaying as Video?,
-    recommendations: recommendations ?? this.recommendations,
-    loadingRecommendations:
-        loadingRecommendations ?? this.loadingRecommendations,
+    railReply: railReply == _keep ? this.railReply : railReply as int?,
+    related: related ?? this.related,
+    loadingRelated: loadingRelated ?? this.loadingRelated,
     played: played ?? this.played,
     error: error == _keep ? this.error : error as String?,
   );
 }
 
 const _keep = Object();
+
+/// A reply's other results plus [related], without duplicates or the main video
+/// (the first of [videos]), highest match first (unscored last, order kept).
+List<Video> mergeRecommendations(List<Video> videos, List<Video> related) {
+  final main = videos.firstOrNull?.youtubeId;
+  final seen = <String>{?main};
+  final out = <Video>[
+    for (final v in [...videos.skip(1), ...related])
+      if (seen.add(v.youtubeId)) v,
+  ];
+  // List.sort isn't guaranteed stable; sort by (match desc, original position).
+  final order = {for (final (i, v) in out.indexed) v.youtubeId: i};
+  out.sort((a, b) {
+    final c = (b.match ?? 0).compareTo(a.match ?? 0);
+    return c != 0 ? c : order[a.youtubeId]!.compareTo(order[b.youtubeId]!);
+  });
+  return out;
+}
 
 class ChatController extends Notifier<ChatState> {
   StreamSubscription<PlayerEvent>? _sub;
@@ -344,9 +439,15 @@ class ChatController extends Notifier<ChatState> {
   ChatState build() {
     _sub = _player.events.listen(_onPlayerEvent);
     ref.onDispose(() => _sub?.cancel());
-    // The saved model wins once both the model list and the preferences are in.
+    listenSelf((prev, next) {
+      if (prev?.conversationId != next.conversationId) {
+        ref.read(openChatIdProvider.notifier).set(next.conversationId);
+      }
+    });
+    // The saved model wins once both the model list and the preferences are in
+    // (for a new chat; an open chat keeps the model it was switched to).
     ref.listen(preferencesProvider.select((p) => p.model), (_, m) {
-      if (m != null && state.models.contains(m)) {
+      if (m != null && _has(m) && state.messages.isEmpty) {
         state = state.copyWith(model: m);
       }
     });
@@ -355,27 +456,52 @@ class ChatController extends Notifier<ChatState> {
   }
 
   // ---------------------------------------------------------------- models
+  bool _has(String? m) => state.models.any((x) => x.name == m);
+
+  /// Model for a chat with no model of its own: the saved one, else the default.
+  String? _startModel() {
+    final saved = _prefs.model;
+    if (_has(saved)) return saved;
+    if (_has(state.defaultModel)) return state.defaultModel;
+    return state.models.firstOrNull?.name;
+  }
+
   Future<void> loadModels() async {
     try {
       final data = await _api.get('/models') as Map<String, dynamic>;
       if (!ref.mounted) return;
-      final models = [for (final m in data['models'] as List) m as String];
-      final def = data['default'] as String;
-      final saved = _prefs.model;
       state = state.copyWith(
-        models: models,
-        model: models.contains(saved)
-            ? saved
-            : models.contains(state.model)
-            ? state.model
-            : (models.contains(def) ? def : models.firstOrNull),
+        models: [for (final m in data['models'] as List) ModelInfo.fromJson(m)],
+        defaultModel: data['default'] as String?,
+        baseContext: (data['base_context'] as num?)?.toInt() ?? 0,
       );
+      if (!_has(state.model)) state = state.copyWith(model: _startModel());
     } on ApiException {
       // Ollama down: chat still works via the keyword fallback.
     }
   }
 
-  void setModel(String model) => state = state.copyWith(model: model);
+  /// Switch the model answering in this chat (Settings also sets the default).
+  void setModel(String model) {
+    state = state.copyWith(model: model);
+    unawaited(_loadUsage());
+  }
+
+  /// Context meter and trim flag for the open chat and its model.
+  Future<void> _loadUsage() async {
+    final id = state.conversationId;
+    final model = state.model;
+    if (id == null) return;
+    try {
+      final data =
+          await _api.get('/conversations/$id/usage', {'model': ?model})
+              as Map<String, dynamic>;
+      if (!ref.mounted || state.conversationId != id) return;
+      state = state.copyWith(usage: ChatUsage.fromJson(data));
+    } on ApiException {
+      // The meter keeps its last value.
+    }
+  }
 
   // ---------------------------------------------------------------- chat
   Future<void> send(String raw) async {
@@ -408,6 +534,7 @@ class ChatController extends Notifier<ChatState> {
       final action = PlayerAction.fromJson(data['action']);
       var reply = data['reply'] as String? ?? '';
       if (action?.type == ActionType.stop) reply = _stoppedText();
+      final usage = data['usage'];
       state = state.copyWith(
         conversationId: data['conversation_id'] as String?,
         messages: [
@@ -416,6 +543,12 @@ class ChatController extends Notifier<ChatState> {
             role: Role.assistant,
             text: reply,
             videos: videos,
+            recommendations: videos.isEmpty
+                ? null
+                : [
+                    for (final v in (data['recommendations'] as List? ?? []))
+                      Video.fromJson(v as Map<String, dynamic>),
+                  ],
             highlights: [
               for (final h in (data['highlights'] as List? ?? const []))
                 if (h is String &&
@@ -426,13 +559,18 @@ class ChatController extends Notifier<ChatState> {
                   h,
             ],
             latencyMs: videos.isEmpty ? null : watch.elapsedMilliseconds,
-            source: switch (data['source']) {
-              'catalog' => VideoSource.catalog,
-              'youtube' => VideoSource.youtube,
-              _ => null,
-            },
+            source: VideoSource.parse(data['source']),
+            command: data['source'] == 'command',
+            model: data['model'] as String?,
+            promptTokens: (data['prompt_tokens'] as num?)?.toInt() ?? 0,
+            outputTokens: (data['output_tokens'] as num?)?.toInt() ?? 0,
           ),
         ],
+        // A new reply with videos moves the rail on to it.
+        railReply: videos.isEmpty ? state.railReply : null,
+        usage: usage is Map<String, dynamic>
+            ? ChatUsage.fromJson(usage)
+            : state.usage,
         sending: false,
       );
       // Replies only suggest videos; the user picks what to play.
@@ -476,10 +614,14 @@ class ChatController extends Notifier<ChatState> {
           ChatMessage(
             role: Role.assistant,
             text: data['summary'] as String? ?? '',
+            model: data['model'] as String?,
+            promptTokens: (data['prompt_tokens'] as num?)?.toInt() ?? 0,
+            outputTokens: (data['output_tokens'] as num?)?.toInt() ?? 0,
           ),
         ],
         sending: false,
       );
+      unawaited(_loadUsage());
     } on ApiException catch (e) {
       if (!ref.mounted) return;
       state = state.copyWith(
@@ -489,6 +631,43 @@ class ChatController extends Notifier<ChatState> {
         error: e.message,
       );
     }
+  }
+
+  // ---------------------------------------------------------------- rail
+  /// "Show recommendations" on an earlier reply: the rail shows its list.
+  void showRecommendationsFor(int index) {
+    state = state.copyWith(
+      railReply: index == state.latestReplyIndex ? null : index,
+    );
+    unawaited(ensureRecommendations(index));
+  }
+
+  void backToLatest() => state = state.copyWith(railReply: null);
+
+  /// Replies made before recommendations were stored ask the server for the
+  /// videos related to their main one (once per video per session).
+  Future<void> ensureRecommendations(int index) async {
+    if (index < 0 || index >= state.messages.length) return;
+    final m = state.messages[index];
+    final main = m.videos.firstOrNull;
+    if (main == null || m.recommendations != null) return;
+    final id = main.youtubeId;
+    if (state.related.containsKey(id) || state.loadingRelated.contains(id)) {
+      return;
+    }
+    state = state.copyWith(loadingRelated: {...state.loadingRelated, id});
+    List<Video> found = const [];
+    try {
+      final data = await _api.get('/videos/$id/recommendations') as List;
+      found = [for (final r in data) Video.fromJson(r as Map<String, dynamic>)];
+    } on ApiException {
+      // Shown as "no recommendations"; not retried this session.
+    }
+    if (!ref.mounted) return;
+    state = state.copyWith(
+      related: {...state.related, id: found},
+      loadingRelated: {...state.loadingRelated}..remove(id),
+    );
   }
 
   // ---------------------------------------------------------------- player
@@ -559,7 +738,7 @@ class ChatController extends Notifier<ChatState> {
     state = state.copyWith(
       messages: [
         ...state.messages,
-        ChatMessage(role: Role.assistant, text: _stoppedText()),
+        ChatMessage(role: Role.assistant, text: _stoppedText(), command: true),
       ],
     );
     _close();
@@ -570,8 +749,6 @@ class ChatController extends Notifier<ChatState> {
     _playback.set(Playback(d: v.durationS.toDouble(), t: start));
     state = state.copyWith(
       nowPlaying: v,
-      recommendations: const [],
-      loadingRecommendations: true,
       played: {...state.played, v.youtubeId},
     );
     _player.load(v.youtubeId, start: start);
@@ -581,7 +758,6 @@ class ChatController extends Notifier<ChatState> {
     unawaited(
       _api.post('/videos/${v.youtubeId}/watched').catchError((_) => null),
     );
-    unawaited(_loadRecommendations(v));
   }
 
   void next() {
@@ -622,22 +798,6 @@ class ChatController extends Notifier<ChatState> {
 
   void unloop() => _player.unloop();
 
-  Future<void> _loadRecommendations(Video v) async {
-    try {
-      final data =
-          await _api.get('/videos/${v.youtubeId}/recommendations') as List;
-      if (!ref.mounted || state.nowPlaying?.youtubeId != v.youtubeId) return;
-      state = state.copyWith(
-        recommendations: [
-          for (final r in data) Video.fromJson(r as Map<String, dynamic>),
-        ],
-        loadingRecommendations: false,
-      );
-    } on ApiException {
-      if (ref.mounted) state = state.copyWith(loadingRecommendations: false);
-    }
-  }
-
   String _stoppedText() {
     final t = ref.read(playbackProvider).t;
     return t > 0
@@ -647,7 +807,8 @@ class ChatController extends Notifier<ChatState> {
 
   void _close() {
     _player.stop();
-    state = state.copyWith(nowPlaying: null, recommendations: const []);
+    // Recommendations stay: they belong to the replies, not to playback.
+    state = state.copyWith(nowPlaying: null);
     _playback.set(const Playback());
   }
 
@@ -709,14 +870,26 @@ class ChatController extends Notifier<ChatState> {
     _close();
     final data = await _api.get('/conversations/${c.id}/messages') as List;
     if (!ref.mounted) return;
+    final messages = [
+      for (final m in data) ChatMessage.fromJson(m as Map<String, dynamic>),
+    ];
+    // The chat keeps answering with the model it last used, if still offered.
+    final last = messages.reversed
+        .where((m) => m.role == Role.assistant && m.model != null)
+        .firstOrNull
+        ?.model;
     state = state.copyWith(
       conversationId: c.id,
-      messages: [
-        for (final m in data) ChatMessage.fromJson(m as Map<String, dynamic>),
-      ],
+      messages: messages,
+      model: _has(last) ? last : _startModel(),
+      usage: null,
+      railReply: null,
       played: const {},
       error: null,
     );
+    final latest = state.latestReplyIndex;
+    if (latest != null) unawaited(ensureRecommendations(latest));
+    unawaited(_loadUsage());
   }
 
   Future<void> deleteConversation(String id) async {
@@ -734,6 +907,9 @@ class ChatController extends Notifier<ChatState> {
     state = state.copyWith(
       messages: const [],
       conversationId: null,
+      model: _startModel() ?? state.model,
+      usage: null,
+      railReply: null,
       played: const {},
       error: null,
     );

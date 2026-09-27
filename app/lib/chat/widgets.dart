@@ -50,9 +50,17 @@ class DurationBadge extends StatelessWidget {
 }
 
 class Thumbnail extends StatelessWidget {
-  const Thumbnail({super.key, required this.video, this.radius = 10});
+  const Thumbnail({
+    super.key,
+    required this.video,
+    this.radius = 10,
+    this.showMatch = true,
+  });
   final Video video;
   final double radius;
+
+  /// Off where the match badge sits next to the thumbnail instead (rail rows).
+  final bool showMatch;
 
   @override
   Widget build(BuildContext context) {
@@ -72,7 +80,7 @@ class Thumbnail extends StatelessWidget {
               errorBuilder: (_, _, _) =>
                   Icon(LucideIcons.clapperboard, color: cs.mutedForeground),
             ),
-            if (video.match != null)
+            if (showMatch && video.match != null)
               Positioned(left: 6, top: 6, child: MatchBadge(video.match!)),
             if (video.durationS > 0)
               Positioned(
@@ -87,7 +95,7 @@ class Thumbnail extends StatelessWidget {
   }
 }
 
-/// A thumbnail card for a search result, alternative or recommendation.
+/// A thumbnail card for a search result or recommendation.
 class VideoCard extends StatelessWidget {
   const VideoCard({
     super.key,

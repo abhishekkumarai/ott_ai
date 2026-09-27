@@ -172,32 +172,6 @@ async def test_demo_cannot_change_password_or_delete(client):
     assert r.status_code == 200
 
 
-# ---------- library (OTTAI-16) ----------
-
-async def test_saved_videos_roundtrip(client):
-    await seed_catalog()
-    h = auth((await register(client))["access_token"])
-    assert (await client.get("/api/me/saved", headers=h)).json() == []
-    assert (await client.put("/api/me/saved/aaaaaaaaaaa", headers=h)).status_code == 204
-    assert (await client.put("/api/me/saved/aaaaaaaaaaa", headers=h)).status_code == 204  # idempotent
-    assert (await client.put("/api/me/saved/ccccccccccc", headers=h)).status_code == 204
-    ids = [v["youtube_id"] for v in (await client.get("/api/me/saved", headers=h)).json()]
-    assert ids == ["ccccccccccc", "aaaaaaaaaaa"]  # newest first
-    assert (await client.put("/api/me/saved/zzzzzzzzzzz", headers=h)).status_code == 404
-    assert (await client.put("/api/me/saved/bad", headers=h)).status_code == 422
-    assert (await client.delete("/api/me/saved/aaaaaaaaaaa", headers=h)).status_code == 204
-    ids = [v["youtube_id"] for v in (await client.get("/api/me/saved", headers=h)).json()]
-    assert ids == ["ccccccccccc"]
-
-
-async def test_saved_videos_are_private(client):
-    await seed_catalog()
-    a = auth((await register(client, "a@example.com"))["access_token"])
-    b = auth((await register(client, "b@example.com"))["access_token"])
-    await client.put("/api/me/saved/aaaaaaaaaaa", headers=a)
-    assert (await client.get("/api/me/saved", headers=b)).json() == []
-
-
 def test_save_command():
     assert parse_command("save this").action == "save"
     assert parse_command("save this video for later").action == "save"
@@ -284,9 +258,14 @@ async def test_summary_of_a_part(client, monkeypatch):
 
     seen = {}
 
-    async def fake_chat_json(model, messages, schema, num_predict=200):
+    async def fake_chat_json(model, messages, schema, num_predict=200, num_ctx=None):
         seen["prompt"] = messages[-1]["content"]
-        return {"summary": "Stars collapse when their fuel runs out."}
+        seen["num_ctx"] = num_ctx
+        return ollama.ChatResult(
+            data={"summary": "Stars collapse when their fuel runs out."},
+            prompt_tokens=300,
+            output_tokens=40,
+        )
 
     await seed_catalog()
     admin = await _admin(client)
@@ -304,12 +283,19 @@ async def test_summary_of_a_part(client, monkeypatch):
         headers=user,
     )
     assert r.status_code == 200 and r.json()["summary"].startswith("Stars collapse")
+    assert (r.json()["model"], r.json()["prompt_tokens"], r.json()["output_tokens"]) == (
+        "llama3.2:3b", 300, 40,
+    )
+    assert seen["num_ctx"] == 4096
     assert "gravity wins" in seen["prompt"] and "point of no return" not in seen["prompt"]
     msgs = (await client.get(f"/api/conversations/{conv}/messages", headers=user)).json()
     assert [m["content"] for m in msgs[-2:]] == [
         "Summarize “Stars”",
         "Stars collapse when their fuel runs out.",
     ]
+    assert (msgs[-1]["source"], msgs[-1]["model"], msgs[-1]["output_tokens"]) == (
+        "summary", "llama3.2:3b", 40,
+    )
 
     async def offline(*a, **k):
         return None

@@ -18,6 +18,9 @@ os.environ["OTT_DATABASE_URL"] = urlunsplit((_p.scheme, _p.netloc, "/ott_ai_db_t
 os.environ["OTT_EXPECTED_DB_NAME"] = "ott_ai_db_test"
 os.environ["OTT_YOUTUBE_API_KEY"] = "test-key"
 os.environ["OTT_ENV"] = "test"
+# Fixture catalogs use their own topics; tests that need the recommendation
+# topics (LLMs, ML, data structures) set them explicitly.
+os.environ["OTT_RECOMMEND_TOPICS"] = "[]"
 
 ROOT = Path(__file__).resolve().parents[1]
 subprocess.run(
@@ -34,6 +37,10 @@ from app.main import app  # noqa: E402
 from app.videos import youtube  # noqa: E402
 
 VEC_DIM = 768
+# What the fake Ollama reports for every chat request.
+FAKE_PROMPT_TOKENS = 120
+FAKE_OUTPUT_TOKENS = 30
+FAKE_CONTEXT = 4096
 
 
 def fake_vec(text_: str) -> list[float]:
@@ -56,9 +63,16 @@ def _offline(monkeypatch):
     async def models():
         return {"llama3.2:3b", "qwen3.5:4b"}
 
-    async def chat_json(model, messages, schema):
+    async def chat_json(model, messages, schema, num_predict=200, num_ctx=None):
         msg = messages[-1]["content"]
-        return {"topic": msg.replace("show me", "").strip(), "reply": "Here you go."}
+        return ollama.ChatResult(
+            data={"topic": msg.replace("show me", "").strip(), "reply": "Here you go."},
+            prompt_tokens=FAKE_PROMPT_TOKENS,
+            output_tokens=FAKE_OUTPUT_TOKENS,
+        )
+
+    async def context_length(model):
+        return FAKE_CONTEXT
 
     async def yt_search(q, max_results=8):
         return []
@@ -66,6 +80,7 @@ def _offline(monkeypatch):
     monkeypatch.setattr(ollama, "embed", embed)
     monkeypatch.setattr(ollama, "installed_models", models)
     monkeypatch.setattr(ollama, "chat_json", chat_json)
+    monkeypatch.setattr(ollama, "context_length", context_length)
     monkeypatch.setattr(youtube, "search", yt_search)
     limiter.reset()
 

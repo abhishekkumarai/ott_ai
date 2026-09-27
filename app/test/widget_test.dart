@@ -38,32 +38,65 @@ class FakeApi extends ApiClient {
     };
   }
 
+  final gets = <String>[];
+
   @override
   Future<dynamic> get(String path, [Map<String, dynamic>? query]) async {
-    if (path == '/models') {
-      return {
-        'models': ['llama3.2:3b', 'qwen3.5:4b'],
-        'default': 'llama3.2:3b',
-      };
-    }
+    gets.add(query == null ? path : '$path?${query.values.join(',')}');
+    if (path == '/models') return models;
     if (path == '/me/preferences') return prefs;
     if (path.endsWith('/recommendations')) {
       return [_video('rrrrrrrrrrr', 'Related')];
     }
     if (path.endsWith('/chapters')) return chapters;
+    final saves = _saves.firstMatch(path);
+    if (saves != null) {
+      return [for (final id in saved[saves[1]] ?? const []) _video(id, id)];
+    }
+    if (path.endsWith('/usage')) return usage(query?['model'] as String?);
+    if (path.endsWith('/messages')) {
+      return conversationMessages[path.split('/')[2]] ?? const [];
+    }
     return [];
   }
 
+  Map<String, dynamic> models = {
+    'models': [
+      {'name': 'llama3.2:3b', 'context': 4096},
+      {'name': 'qwen3.5:4b', 'context': 8192},
+    ],
+    'default': 'llama3.2:3b',
+    'base_context': 180,
+    'history_window': 6,
+  };
+  Map<String, dynamic> Function(String? model) usage = (model) => {
+    'prompt_tokens': 0,
+    'output_tokens': 0,
+    'context_tokens': 900,
+    'context_limit': 4096,
+    'history_window': 6,
+    'trimmed': false,
+  };
+
+  /// GET /conversations/{id}/messages, by conversation id.
+  final conversationMessages = <String, List<Map<String, dynamic>>>{};
+
   Map<String, dynamic> prefs = {};
-  final saved = <String>[];
+
+  /// Saved video ids per conversation, newest first.
+  final saved = <String, List<String>>{};
+  int saveCalls = 0;
   bool failWrites = false;
+  static final _saves = RegExp(r'^/conversations/([^/]+)/saved(?:/([^/]+))?$');
 
   @override
   Future<dynamic> put(String path, [Object? body]) async {
     if (failWrites) throw ApiException('Server said no');
-    final id = path.split('/').last;
-    if (path.startsWith('/me/saved/') && !saved.contains(id)) {
-      saved.insert(0, id);
+    final m = _saves.firstMatch(path);
+    if (m != null && m[2] != null) {
+      saveCalls++;
+      final list = saved.putIfAbsent(m[1]!, () => []);
+      if (!list.contains(m[2])) list.insert(0, m[2]!);
     }
     return null;
   }
@@ -71,7 +104,8 @@ class FakeApi extends ApiClient {
   @override
   Future<dynamic> delete(String path, [Object? body]) async {
     if (failWrites) throw ApiException('Server said no');
-    if (path.startsWith('/me/saved/')) saved.remove(path.split('/').last);
+    final m = _saves.firstMatch(path);
+    if (m != null && m[2] != null) saved[m[1]]?.remove(m[2]);
     return null;
   }
 
@@ -191,6 +225,10 @@ void main() {
             _video('aaaaaaaaaaa', 'Sourdough'),
             _video('bbbbbbbbbbb', 'Pasta'),
           ],
+          'recommendations': [
+            _video('bbbbbbbbbbb', 'Pasta'),
+            _video('rrrrrrrrrrr', 'Related'),
+          ],
           'action': null,
           'source': 'catalog',
         };
@@ -201,10 +239,9 @@ void main() {
         chat.play(c.read(chatProvider).messages.last.videos.first);
         expect(c.read(chatProvider).nowPlaying?.youtubeId, 'aaaaaaaaaaa');
         expect(transport.calls, contains('load:aaaaaaaaaaa'));
-        await Future<void>.delayed(Duration.zero);
         expect(
-          c.read(chatProvider).recommendations.single.youtubeId,
-          'rrrrrrrrrrr',
+          [for (final v in c.read(chatProvider).rail) v.youtubeId],
+          ['bbbbbbbbbbb', 'rrrrrrrrrrr'],
         );
 
         api.onChat = (b) => {
@@ -240,10 +277,17 @@ void main() {
       },
     );
 
-    test('next plays the first recommendation', () async {
+    test('next plays the top recommendation', () async {
       final chat = c.read(chatProvider.notifier);
-      chat.play(Video.fromJson(_video('aaaaaaaaaaa', 'A')));
-      await Future<void>.delayed(Duration.zero);
+      api.onChat = (b) => {
+        'conversation_id': 'c1',
+        'reply': 'Here you go',
+        'videos': [_video('aaaaaaaaaaa', 'A')],
+        'recommendations': [_video('rrrrrrrrrrr', 'Related')],
+        'source': 'catalog',
+      };
+      await chat.send('a');
+      chat.play(c.read(chatProvider).messages.last.videos.first);
       chat.next();
       expect(c.read(chatProvider).nowPlaying?.youtubeId, 'rrrrrrrrrrr');
     });
