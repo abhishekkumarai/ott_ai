@@ -53,7 +53,7 @@ class ChatOut(BaseModel):
     videos: list[VideoOut] = []
     recommendations: list[VideoOut] = []
     action: ActionOut | None = None
-    source: Literal["command", "catalog", "youtube", "vidy", "none", "chat"]
+    source: str
     highlights: list[str] = []
     model: str | None = None  # None: no LLM wrote this reply
     prompt_tokens: int = 0
@@ -220,13 +220,15 @@ async def chat(request: Request, body: ChatIn, db: DB, user: CurrentUser):
     ctx = await ollama.context_length(model)
     u = await understand(text, model, history, ctx, source=body.source)
 
-    if body.source.startswith("vidy"):
-        vidy_items = await search_vidy(u.topic or text, source=body.source)
-        videos_out = vidy_items[:3]
-        rail_out = vidy_items[3:] or vidy_items[:3]
-        source = "vidy"
+    if body.source.startswith("vidy") or (body.source not in ("youtube", "catalog", "chat")):
+        from app.videos.multi_provider import search_provider
+
+        stream_items = await search_provider(u.topic or text, provider_id=body.source)
+        videos_out = stream_items[:3]
+        rail_out = stream_items[3:] or stream_items[:3]
+        source = body.source
         reply = u.reply
-        if not vidy_items:
+        if not stream_items:
             reply = f"I couldn't find a title for “{u.topic or text}”. Try another movie, show, or anime."
         db.add(
             Message(
@@ -235,7 +237,7 @@ async def chat(request: Request, body: ChatIn, db: DB, user: CurrentUser):
                 content=reply,
                 video_ids=[v.youtube_id for v in videos_out],
                 recommendations=[v.model_dump() for v in rail_out],
-                source="vidy",
+                source=source,
                 model=model if u.used_llm else None,
                 prompt_tokens=u.prompt_tokens,
                 output_tokens=u.output_tokens,
@@ -247,7 +249,7 @@ async def chat(request: Request, body: ChatIn, db: DB, user: CurrentUser):
             reply=reply,
             videos=videos_out,
             recommendations=rail_out,
-            source="vidy",
+            source=source,
             highlights=u.highlights if videos_out else [],
             model=model if u.used_llm else None,
             prompt_tokens=u.prompt_tokens,

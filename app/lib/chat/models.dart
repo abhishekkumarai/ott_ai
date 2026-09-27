@@ -28,7 +28,7 @@ class Video {
   final int? episode;
 
   static final _id = RegExp(
-    r'^([A-Za-z0-9_-]{11}|vidy:(movie|tv|anime):[A-Za-z0-9_/-]+)$',
+    r'^([A-Za-z0-9_-]{11}|[a-z0-9_-]+:(movie|tv|anime|video):[A-Za-z0-9_/-]+)$',
   );
 
   factory Video.fromJson(Map<String, dynamic> j) {
@@ -36,11 +36,11 @@ class Video {
     if (!_id.hasMatch(id)) throw const FormatException('bad video id');
     final provider =
         j['provider'] as String? ??
-        (id.startsWith('vidy:') ? 'vidy' : 'youtube');
+        (id.contains(':') ? id.split(':').first : 'youtube');
     final mediaType = j['media_type'] as String? ?? 'video';
 
     String thumb;
-    if (provider == 'vidy') {
+    if (provider != 'youtube') {
       final raw = j['thumbnail'] as String? ?? '';
       if (raw.startsWith('https://image.tmdb.org/') ||
           raw.startsWith('https://s4.anilist.co/')) {
@@ -78,6 +78,7 @@ enum VideoSource {
   catalog,
   youtube,
   vidy,
+  multi,
   none;
 
   /// Only the sources the header labels; anything else is null.
@@ -85,6 +86,7 @@ enum VideoSource {
     'catalog' => catalog,
     'youtube' => youtube,
     'vidy' => vidy,
+    final String str when str.isNotEmpty => multi,
     _ => null,
   };
 }
