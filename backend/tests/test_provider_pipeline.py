@@ -179,3 +179,22 @@ async def test_provider_registry_pipeline_execution():
         assert "youtube" in verified_ids
         assert "vidy" in verified_ids
         assert "bad_site" not in verified_ids
+
+
+@pytest.mark.asyncio
+async def test_providers_api_endpoint(client):
+    reg = await client.post("/api/auth/register", json={"email": "provtest@test.com", "password": "Password123!"})
+    token = reg.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = await client.get("/api/videos/providers", headers=headers)
+    assert resp.status_code == 200
+    providers = resp.json()
+    assert len(providers) >= 2
+    ids = [p["id"] for p in providers]
+    assert "youtube" in ids
+    assert "vidy" in ids
+    # All returned providers must be healthy and embed_allowed
+    assert all(p["status"] == "healthy" for p in providers)
+    assert all(p["embed_allowed"] is True for p in providers)
+

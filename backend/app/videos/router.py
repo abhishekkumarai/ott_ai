@@ -78,6 +78,39 @@ class ChapterOut(BaseModel):
     title: str
 
 
+class ProviderOut(BaseModel):
+    id: str
+    name: str
+    category: str
+    base_url: str
+    search_type: str
+    status: str
+    embed_allowed: bool
+    latency_ms: int = 0
+
+
+@router.get("/providers", response_model=list[ProviderOut])
+@limiter.limit("60/minute")
+async def providers(request: Request, user: CurrentUser):
+    """List verified streaming providers that passed the health check pipeline."""
+    from app.videos.provider_pipeline import provider_registry
+
+    verified = provider_registry.get_verified_providers()
+    return [
+        ProviderOut(
+            id=p.id,
+            name=p.name,
+            category=p.category,
+            base_url=p.base_url,
+            search_type=p.search_type,
+            status=p.status.value,
+            embed_allowed=p.embed_allowed,
+            latency_ms=p.latency_ms,
+        )
+        for p in verified
+    ]
+
+
 @router.get("/search", response_model=list[VideoOut])
 @limiter.limit("30/minute")
 async def search(

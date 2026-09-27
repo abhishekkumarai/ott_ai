@@ -131,6 +131,38 @@ class RailTabController extends Notifier<RailTab> {
 final railTabProvider =
     NotifierProvider<RailTabController, RailTab>(RailTabController.new);
 
+/// Verified healthy stream providers from the backend pipeline.
+final verifiedProvidersProvider =
+    FutureProvider<List<StreamProviderInfo>>((ref) async {
+  try {
+    final data = await ref.read(apiProvider).get('/videos/providers');
+    if (data is! List) return const [];
+    return [
+      for (final p in data)
+        StreamProviderInfo.fromJson(Map<String, dynamic>.from(p as Map)),
+    ];
+  } catch (_) {
+    // Fallback default verified providers if network error
+    return const [
+      StreamProviderInfo(
+        id: 'youtube',
+        name: 'YouTube Catalog',
+        category: 'youtube',
+        baseUrl: 'https://www.youtube-nocookie.com',
+        searchType: 'catalog',
+      ),
+      StreamProviderInfo(
+        id: 'vidy',
+        name: 'Vidy Multi-Stream',
+        category: 'movies_tv',
+        baseUrl: 'https://vidy.st',
+        searchType: 'tmdb',
+      ),
+    ];
+  }
+});
+
+
 
 /// Where manual collapse toggles are kept between app runs (OTTAI-18).
 abstract class CollapseStore {

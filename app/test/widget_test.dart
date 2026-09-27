@@ -51,6 +51,7 @@ class FakeApi extends ApiClient {
     }
     if (path.endsWith('/chapters')) return chapters;
     if (path.contains('/episodes')) return episodes;
+    if (path.endsWith('/providers')) return providers;
     final saves = _saves.firstMatch(path);
     if (saves != null) {
       return [for (final id in saved[saves[1]] ?? const []) _video(id, id)];
@@ -101,6 +102,29 @@ class FakeApi extends ApiClient {
       },
     ],
   };
+
+  List<Map<String, dynamic>> providers = [
+    {
+      'id': 'youtube',
+      'name': 'YouTube Catalog',
+      'category': 'youtube',
+      'base_url': 'https://www.youtube-nocookie.com',
+      'search_type': 'catalog',
+      'status': 'healthy',
+      'embed_allowed': true,
+      'latency_ms': 10,
+    },
+    {
+      'id': 'vidy',
+      'name': 'Vidy Multi-Stream',
+      'category': 'movies_tv',
+      'base_url': 'https://vidy.st',
+      'search_type': 'tmdb',
+      'status': 'healthy',
+      'embed_allowed': true,
+      'latency_ms': 800,
+    },
+  ];
 
   Map<String, dynamic> models = {
     'models': [
@@ -268,6 +292,33 @@ void main() {
       expect(v.provider, 'vidy');
       expect(v.mediaType, 'tv');
       expect(v.title, 'Breaking Bad - S1E1: Pilot');
+    });
+
+    test('StreamProviderInfo JSON parsing and verifiedProvidersProvider', () async {
+      final info = StreamProviderInfo.fromJson({
+        'id': 'vidy',
+        'name': 'Vidy Multi-Stream',
+        'category': 'movies_tv',
+        'base_url': 'https://vidy.st',
+        'search_type': 'tmdb',
+        'status': 'healthy',
+        'embed_allowed': true,
+        'latency_ms': 750,
+      });
+      expect(info.id, 'vidy');
+      expect(info.name, 'Vidy Multi-Stream');
+      expect(info.category, 'movies_tv');
+      expect(info.embedAllowed, isTrue);
+
+      final c = ProviderContainer(
+        overrides: [apiProvider.overrideWithValue(FakeApi())],
+      );
+      addTearDown(c.dispose);
+
+      final providers = await c.read(verifiedProvidersProvider.future);
+      expect(providers.length, 2);
+      expect(providers.first.id, 'youtube');
+      expect(providers.last.id, 'vidy');
     });
   });
 

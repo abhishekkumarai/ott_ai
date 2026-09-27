@@ -404,3 +404,38 @@ class SeriesEpisodes {
   );
 }
 
+class StreamProviderInfo {
+  const StreamProviderInfo({
+    required this.id,
+    required this.name,
+    required this.category,
+    required this.baseUrl,
+    required this.searchType,
+    this.status = 'healthy',
+    this.embedAllowed = true,
+    this.latencyMs = 0,
+  });
+
+  final String id;
+  final String name;
+  final String category;
+  final String baseUrl;
+  final String searchType;
+  final String status;
+  final bool embedAllowed;
+  final int latencyMs;
+
+  factory StreamProviderInfo.fromJson(Map<String, dynamic> j) =>
+      StreamProviderInfo(
+        id: j['id'] as String? ?? '',
+        name: j['name'] as String? ?? '',
+        category: j['category'] as String? ?? 'movies_tv',
+        baseUrl: j['base_url'] as String? ?? '',
+        searchType: j['search_type'] as String? ?? 'tmdb',
+        status: j['status'] as String? ?? 'healthy',
+        embedAllowed: j['embed_allowed'] as bool? ?? true,
+        latencyMs: (j['latency_ms'] as num?)?.toInt() ?? 0,
+      );
+}
+
+
