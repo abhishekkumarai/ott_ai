@@ -25,6 +25,7 @@ class ChatIn(BaseModel):
     conversation_id: uuid.UUID | None = None
     model: str | None = Field(default=None, max_length=60)
     player_open: bool = False
+    source: str = "youtube"
 
 
 class ActionOut(BaseModel):
@@ -51,7 +52,7 @@ class ChatOut(BaseModel):
     videos: list[VideoOut] = []
     recommendations: list[VideoOut] = []
     action: ActionOut | None = None
-    source: Literal["command", "catalog", "youtube", "none", "chat"]
+    source: Literal["command", "catalog", "youtube", "vidy", "none", "chat"]
     highlights: list[str] = []
     model: str | None = None  # None: no LLM wrote this reply
     prompt_tokens: int = 0

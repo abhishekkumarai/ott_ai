@@ -175,6 +175,27 @@ void main() {
       expect(v.thumbnail, 'https://i.ytimg.com/vi/aaaaaaaaaaa/mqdefault.jpg');
     });
 
+    test('Video.fromJson parses Vidy media and keeps sanitized thumbnail', () {
+      final v = Video.fromJson({
+        'youtube_id': 'vidy:movie:315162',
+        'title': 'Puss in Boots',
+        'channel': 'Universal Pictures',
+        'duration_s': 6120,
+        'topic': 'Animation',
+        'provider': 'vidy',
+        'media_type': 'movie',
+        'thumbnail':
+            'https://image.tmdb.org/t/p/w500/1NqwE62Xvum27eRPi4QVod7YWoG.jpg',
+      });
+      expect(v.youtubeId, 'vidy:movie:315162');
+      expect(v.provider, 'vidy');
+      expect(v.mediaType, 'movie');
+      expect(
+        v.thumbnail,
+        'https://image.tmdb.org/t/p/w500/1NqwE62Xvum27eRPi4QVod7YWoG.jpg',
+      );
+    });
+
     test('PlayerAction.fromJson', () {
       final a = PlayerAction.fromJson({'type': 'seek', 'seconds': 25});
       expect(a!.type, ActionType.seek);

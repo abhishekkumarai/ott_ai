@@ -7,6 +7,10 @@ class Video {
     required this.topic,
     required this.thumbnail,
     this.match,
+    this.provider = 'youtube',
+    this.mediaType = 'video',
+    this.season,
+    this.episode,
   });
 
   final String youtubeId;
@@ -18,24 +22,51 @@ class Video {
 
   /// 1–99: how close this video is to the question / the playing video.
   final int? match;
+  final String provider; // 'youtube' | 'vidy'
+  final String mediaType; // 'video' | 'movie' | 'tv' | 'anime'
+  final int? season;
+  final int? episode;
 
-  static final _id = RegExp(r'^[A-Za-z0-9_-]{11}$');
+  static final _id = RegExp(
+    r'^([A-Za-z0-9_-]{11}|vidy:(movie|tv|anime):[A-Za-z0-9_/-]+)$',
+  );
 
   factory Video.fromJson(Map<String, dynamic> j) {
     final id = j['youtube_id'] as String;
     if (!_id.hasMatch(id)) throw const FormatException('bad video id');
+    final provider =
+        j['provider'] as String? ??
+        (id.startsWith('vidy:') ? 'vidy' : 'youtube');
+    final mediaType = j['media_type'] as String? ?? 'video';
+
+    String thumb;
+    if (provider == 'vidy') {
+      final raw = j['thumbnail'] as String? ?? '';
+      if (raw.startsWith('https://image.tmdb.org/') ||
+          raw.startsWith('https://s4.anilist.co/')) {
+        thumb = raw;
+      } else {
+        thumb = 'https://vidy.st/favicon.svg';
+      }
+    } else {
+      thumb = 'https://i.ytimg.com/vi/$id/mqdefault.jpg';
+    }
+
     return Video(
       youtubeId: id,
       title: j['title'] as String? ?? '',
       channel: j['channel'] as String? ?? '',
       durationS: (j['duration_s'] as num?)?.toInt() ?? 0,
       topic: j['topic'] as String? ?? '',
-      // Always build the thumbnail URL ourselves rather than trusting the payload.
-      thumbnail: 'https://i.ytimg.com/vi/$id/mqdefault.jpg',
+      thumbnail: thumb,
       match: switch (j['match']) {
         final num m when m >= 1 && m <= 99 => m.toInt(),
         _ => null,
       },
+      provider: provider,
+      mediaType: mediaType,
+      season: (j['season'] as num?)?.toInt(),
+      episode: (j['episode'] as num?)?.toInt(),
     );
   }
 }
@@ -46,12 +77,14 @@ enum Role { user, assistant }
 enum VideoSource {
   catalog,
   youtube,
+  vidy,
   none;
 
-  /// Only the two sources the header labels; anything else is null.
+  /// Only the sources the header labels; anything else is null.
   static VideoSource? parse(Object? s) => switch (s) {
     'catalog' => catalog,
     'youtube' => youtube,
+    'vidy' => vidy,
     _ => null,
   };
 }

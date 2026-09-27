@@ -23,6 +23,10 @@ class VideoOut(BaseModel):
     topic: str
     thumbnail: str
     match: int | None = None  # 1-99: cosine similarity as a percentage
+    provider: str = "youtube"  # "youtube" | "vidy"
+    media_type: str = "video"  # "video" | "movie" | "tv" | "anime"
+    season: int | None = None
+    episode: int | None = None
 
     @classmethod
     def of(cls, v: Video, match: int | None = None) -> "VideoOut":
@@ -34,6 +38,8 @@ class VideoOut(BaseModel):
             topic=v.topic,
             thumbnail=f"https://i.ytimg.com/vi/{v.youtube_id}/mqdefault.jpg",
             match=match,
+            provider="youtube",
+            media_type="video",
         )
 
 

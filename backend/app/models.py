@@ -142,12 +142,12 @@ class Message(Base):
     )
     role: Mapped[str] = mapped_column(String(10), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    video_ids: Mapped[list[str]] = mapped_column(ARRAY(String(11)), default=list, nullable=False)
+    video_ids: Mapped[list[str]] = mapped_column(ARRAY(String(60)), default=list, nullable=False)
     # The reply's Recommended rail (OTTAI-22): [{"youtube_id", "match"}], best first.
     # NULL for replies made before it was stored (the app then asks per video).
     recommendations: Mapped[list[dict] | None] = mapped_column(JSONB)
-    # How an assistant reply was made: command, catalog, youtube, none, chat or summary.
-    source: Mapped[str | None] = mapped_column(String(10))
+    # How an assistant reply was made: command, catalog, youtube, vidy, none, chat or summary.
+    source: Mapped[str | None] = mapped_column(String(20))
     # Model and Ollama token counts for replies the LLM wrote (OTTAI-27); NULL/0 otherwise.
     model: Mapped[str | None] = mapped_column(String(60))
     prompt_tokens: Mapped[int] = mapped_column(
@@ -184,7 +184,5 @@ class SavedVideo(Base):
     conversation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("conversations.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    youtube_id: Mapped[str] = mapped_column(
-        ForeignKey("videos.youtube_id", ondelete="CASCADE"), nullable=False
-    )
+    youtube_id: Mapped[str] = mapped_column(String(60), nullable=False)
     created_at: Mapped[datetime] = _created()
