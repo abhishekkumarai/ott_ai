@@ -222,11 +222,21 @@ class MainVideoCard extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 4),
-        Text(
-          video.channel,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.muted.copyWith(fontSize: 13),
+        Row(
+          children: [
+            if (video.provider == 'vidy') ...[
+              ProviderBadge(video: video),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: Text(
+                video.channel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.muted.copyWith(fontSize: 13),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         Wrap(

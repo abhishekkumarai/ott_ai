@@ -49,6 +49,40 @@ class DurationBadge extends StatelessWidget {
   );
 }
 
+/// Badge for Vidy media items indicating format / season / episode (e.g. "MOVIE", "S1 E1", "EP 1").
+class ProviderBadge extends StatelessWidget {
+  const ProviderBadge({super.key, required this.video});
+  final Video video;
+
+  @override
+  Widget build(BuildContext context) {
+    String label;
+    if (video.mediaType == 'tv' &&
+        video.season != null &&
+        video.episode != null) {
+      label = 'S${video.season} E${video.episode}';
+    } else if (video.mediaType == 'anime' && video.episode != null) {
+      label = 'EP ${video.episode}';
+    } else if (video.mediaType == 'movie') {
+      label = 'MOVIE';
+    } else {
+      label = video.mediaType.toUpperCase();
+    }
+
+    return ShadBadge.raw(
+      variant: ShadBadgeVariant.primary,
+      backgroundColor: const Color(0xD9FF5A3D),
+      hoverBackgroundColor: const Color(0xD9FF5A3D),
+      foregroundColor: const Color(0xFFFFFFFF),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+      child: Text(
+        label,
+        style: mono(context, size: 10, color: const Color(0xFFFFFFFF)),
+      ),
+    );
+  }
+}
+
 class Thumbnail extends StatelessWidget {
   const Thumbnail({
     super.key,
@@ -82,6 +116,12 @@ class Thumbnail extends StatelessWidget {
             ),
             if (showMatch && video.match != null)
               Positioned(left: 6, top: 6, child: MatchBadge(video.match!)),
+            if (showMatch && video.provider == 'vidy')
+              Positioned(
+                left: 6,
+                bottom: 6,
+                child: ProviderBadge(video: video),
+              ),
             if (video.durationS > 0)
               Positioned(
                 right: 6,

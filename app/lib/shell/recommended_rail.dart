@@ -196,6 +196,15 @@ class _RailRowState extends State<RailRow> {
           spacing: 4,
           runSpacing: 4,
           children: [
+            if (v.provider == 'vidy')
+              _Tag(
+                v.mediaType == 'tv' && v.season != null && v.episode != null
+                    ? 'S${v.season} E${v.episode}'
+                    : v.mediaType == 'anime' && v.episode != null
+                    ? 'EP ${v.episode}'
+                    : v.mediaType.toUpperCase(),
+                color: coralOn(context),
+              ),
             if (v.match != null) MatchBadge(v.match!),
             if (widget.playing)
               _Tag('PLAYING', color: coralOn(context))
