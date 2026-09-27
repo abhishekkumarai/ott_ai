@@ -195,4 +195,68 @@ void main() {
       });
     }
   }
+
+  testWidgets(
+    'Scroll to top appears away from the first message and goes there',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final api = ScreenApi()
+        ..onChat = (b) => {
+          'conversation_id': 'c0',
+          'reply': 'Here are some videos.',
+          'videos': _videos,
+          'action': null,
+          'source': 'catalog',
+        };
+      final container = ProviderContainer(
+        overrides: [apiProvider.overrideWithValue(api)],
+      );
+      addTearDown(container.dispose);
+      await container.read(authProvider.notifier).startDemo();
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: ShadApp(theme: lightTheme(), home: const ChatScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final chat = container.read(chatProvider.notifier);
+      for (var i = 0; i < 6; i++) {
+        await chat.send('black holes $i');
+        await tester.pumpAndSettle();
+      }
+
+      IgnorePointer gate() => tester.widget<IgnorePointer>(
+        find
+            .ancestor(
+              of: find.byIcon(LucideIcons.arrowUpToLine),
+              matching: find.byType(IgnorePointer),
+            )
+            .first,
+      );
+      final list = tester
+          .state<ScrollableState>(
+            // The chat list is the reversed (bottom-up) one.
+            find.byWidgetPredicate(
+              (w) => w is Scrollable && w.axisDirection == AxisDirection.up,
+            ),
+          )
+          .position;
+
+      // At the latest message: hidden and untappable.
+      expect(gate().ignoring, isTrue);
+
+      list.jumpTo(list.maxScrollExtent / 2);
+      await tester.pumpAndSettle();
+      expect(gate().ignoring, isFalse);
+
+      await tester.tap(find.byIcon(LucideIcons.arrowUpToLine));
+      await tester.pumpAndSettle();
+      expect(list.extentAfter, 0);
+      expect(find.text('black holes 0'), findsOneWidget);
+      expect(gate().ignoring, isTrue);
+    },
+  );
 }

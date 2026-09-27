@@ -79,6 +79,7 @@
 @layer base {
   * { @apply border-border; }
   html { -webkit-text-size-adjust: 100%; }
+  @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
   body { @apply bg-background text-foreground font-sans antialiased; }
   :focus-visible { @apply outline-2 outline-offset-2 outline-ring; }
 }
@@ -104,5 +105,23 @@
   .kbd {
     @apply inline-flex h-6 items-center rounded-md border bg-muted px-1.5 font-mono text-xs
       text-muted-foreground;
+  }
+  /* Landing "back to top": a plain link (the CSP allows no inline script). */
+  .to-top {
+    @apply fixed right-4 bottom-4 z-50 size-11 rounded-full px-0 text-muted-foreground shadow-lg
+      hover:text-coral-text;
+  }
+}
+
+/* Hidden until the page has scrolled; browsers without scroll timelines always show it. */
+@supports (animation-timeline: scroll()) {
+  .to-top {
+    animation: to-top-reveal linear both;
+    animation-timeline: scroll(root);
+    animation-range: 0 400px;
+  }
+  @keyframes to-top-reveal {
+    from { opacity: 0; visibility: hidden; }
+    to { opacity: 1; visibility: visible; }
   }
 }

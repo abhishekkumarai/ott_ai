@@ -203,8 +203,45 @@ class _ChatBodyState extends ConsumerState<_ChatBody> {
   final _scroll = ScrollController();
   final _composerFocus = FocusNode(debugLabel: 'chat-composer');
 
+  /// Show "Scroll to top" once the first message is this far above the view.
+  static const _topThreshold = 400.0;
+  bool _showTop = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_onScroll);
+  }
+
+  // The list is reversed, so the first message is at maxScrollExtent and the
+  // distance to it is extentAfter.
+  void _onScroll() {
+    final show =
+        _scroll.hasClients && _scroll.position.extentAfter > _topThreshold;
+    if (show != _showTop) setState(() => _showTop = show);
+  }
+
+  Future<void> _scrollToTop() async {
+    final instant = MediaQuery.disableAnimationsOf(context);
+    // Items build lazily, so maxScrollExtent grows as we approach it.
+    for (var i = 0; i < 5 && _scroll.hasClients; i++) {
+      final p = _scroll.position;
+      if (p.extentAfter == 0) break;
+      if (instant) {
+        _scroll.jumpTo(p.maxScrollExtent);
+      } else {
+        await _scroll.animateTo(
+          p.maxScrollExtent,
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
+    _scroll.removeListener(_onScroll);
     _scroll.dispose();
     _composerFocus.dispose();
     super.dispose();
@@ -274,7 +311,22 @@ class _ChatBodyState extends ConsumerState<_ChatBody> {
     return Column(
       children: [
         if (!narrow) const SessionBreadcrumb(),
-        Expanded(child: list),
+        Expanded(
+          child: Stack(
+            children: [
+              Positioned.fill(child: list),
+              if (s.messages.isNotEmpty)
+                Positioned(
+                  right: hPad,
+                  bottom: 12,
+                  child: _ScrollToTopButton(
+                    visible: _showTop,
+                    onPressed: _scrollToTop,
+                  ),
+                ),
+            ],
+          ),
+        ),
         Padding(
           padding: EdgeInsets.fromLTRB(hPad, 0, hPad, 12),
           child: column(
@@ -298,6 +350,51 @@ class _ChatBodyState extends ConsumerState<_ChatBody> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Floating "Scroll to top" over the message list; hidden (and untappable)
+/// near the first message.
+class _ScrollToTopButton extends StatelessWidget {
+  const _ScrollToTopButton({required this.visible, required this.onPressed});
+
+  final bool visible;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = ShadTheme.of(context).colorScheme;
+    return IgnorePointer(
+      ignoring: !visible,
+      child: AnimatedOpacity(
+        opacity: visible ? 1 : 0,
+        duration: const Duration(milliseconds: 180),
+        child: ExcludeSemantics(
+          excluding: !visible,
+          child: ShadTooltip(
+            builder: (_) => const Text('Scroll to top'),
+            child: Semantics(
+              button: true,
+              label: 'Scroll to top',
+              child: ShadIconButton.outline(
+                width: 40,
+                height: 40,
+                backgroundColor: cs.card,
+                decoration: ShadDecoration(
+                  border: ShadBorder.all(
+                    radius: BorderRadius.circular(999),
+                    color: cs.border,
+                  ),
+                  shadows: ShadShadows.md,
+                ),
+                icon: const Icon(LucideIcons.arrowUpToLine, size: 18),
+                onPressed: onPressed,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

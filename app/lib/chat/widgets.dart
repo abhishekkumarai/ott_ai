@@ -200,9 +200,10 @@ class UserBubble extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 520),
         child: DecoratedBox(
+          // Filled soft coral so the user's turn stands out from the page
+          // background (a white card on off-white barely read as a bubble).
           decoration: BoxDecoration(
-            color: cs.card,
-            border: Border.all(color: cs.border),
+            color: coralSoftOn(context),
             borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(18),
               topRight: Radius.circular(18),
