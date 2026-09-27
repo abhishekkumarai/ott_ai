@@ -194,6 +194,8 @@ void main() {
       expect(t.calls, isEmpty);
       h.attach(t);
       expect(t.calls, ['load:aaaaaaaaaaa']);
+      h.load('vidy:movie:315162');
+      expect(t.calls.last, 'load:vidy:movie:315162');
       h.seekBy(25);
       h.stop();
       expect(t.calls.last, 'stop');

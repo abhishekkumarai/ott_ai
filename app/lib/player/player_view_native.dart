@@ -34,7 +34,9 @@ class _PlayerViewState extends State<PlayerView> implements PlayerTransport {
     'loop',
     'unloop',
   };
-  static final _id = RegExp(r'^[A-Za-z0-9_-]{11}$');
+  static final _id = RegExp(
+    r'^([A-Za-z0-9_-]{11}|vidy:(movie|tv|anime):[A-Za-z0-9_/-]+)$',
+  );
   late final Uri _player = Uri.parse(AppConfig.playerUrl);
 
   @override
