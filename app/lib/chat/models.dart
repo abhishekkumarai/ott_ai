@@ -288,3 +288,119 @@ String formatTime(num seconds) {
   final mm = h > 0 ? m.toString().padLeft(2, '0') : '$m';
   return '${h > 0 ? '$h:' : ''}$mm:${r.toString().padLeft(2, '0')}';
 }
+
+class Episode {
+  const Episode({
+    required this.youtubeId,
+    required this.seriesId,
+    required this.seriesTitle,
+    required this.title,
+    required this.episodeNumber,
+    this.seasonNumber = 1,
+    this.durationS = 0,
+    this.thumbnail = '',
+    this.overview = '',
+    this.provider = 'vidy',
+    this.mediaType = 'tv',
+  });
+
+  final String youtubeId;
+  final String seriesId;
+  final String seriesTitle;
+  final String title;
+  final int episodeNumber;
+  final int seasonNumber;
+  final int durationS;
+  final String thumbnail;
+  final String overview;
+  final String provider;
+  final String mediaType;
+
+  Video toVideo({String? seriesName}) => Video(
+    youtubeId: youtubeId,
+    title: (seriesName != null && seriesName.isNotEmpty)
+        ? '$seriesName - S${seasonNumber}E$episodeNumber: $title'
+        : (seriesTitle.isNotEmpty)
+            ? '$seriesTitle - S${seasonNumber}E$episodeNumber: $title'
+            : 'S${seasonNumber}E$episodeNumber: $title',
+    channel: (seriesName != null && seriesName.isNotEmpty)
+        ? seriesName
+        : (seriesTitle.isNotEmpty ? seriesTitle : 'TV Series'),
+    durationS: durationS,
+    topic: mediaType,
+    thumbnail: thumbnail.isNotEmpty ? thumbnail : 'https://vidy.st/favicon.svg',
+    provider: provider,
+    mediaType: mediaType,
+    season: seasonNumber,
+    episode: episodeNumber,
+  );
+
+  factory Episode.fromJson(Map<String, dynamic> j) => Episode(
+    youtubeId: j['youtube_id'] as String? ?? '',
+    seriesId: j['series_id'] as String? ?? '',
+    seriesTitle: j['series_title'] as String? ?? '',
+    title: j['title'] as String? ?? '',
+    episodeNumber: (j['episode_number'] as num?)?.toInt() ?? 1,
+    seasonNumber: (j['season_number'] as num?)?.toInt() ?? 1,
+    durationS: (j['duration_s'] as num?)?.toInt() ?? 0,
+    thumbnail: j['thumbnail'] as String? ?? '',
+    overview: j['overview'] as String? ?? '',
+    provider: j['provider'] as String? ?? 'vidy',
+    mediaType: j['media_type'] as String? ?? 'tv',
+  );
+}
+
+class SeasonInfo {
+  const SeasonInfo({
+    required this.seasonNumber,
+    this.name = '',
+    this.episodeCount = 0,
+  });
+
+  final int seasonNumber;
+  final String name;
+  final int episodeCount;
+
+  factory SeasonInfo.fromJson(Map<String, dynamic> j) => SeasonInfo(
+    seasonNumber: (j['season_number'] as num?)?.toInt() ?? 1,
+    name: j['name'] as String? ?? '',
+    episodeCount: (j['episode_count'] as num?)?.toInt() ?? 0,
+  );
+}
+
+class SeriesEpisodes {
+  const SeriesEpisodes({
+    required this.seriesId,
+    required this.seriesTitle,
+    this.mediaType = 'tv',
+    this.currentSeason = 1,
+    this.currentEpisode = 1,
+    this.seasons = const [],
+    this.episodes = const [],
+  });
+
+  final String seriesId;
+  final String seriesTitle;
+  final String mediaType;
+  final int currentSeason;
+  final int currentEpisode;
+  final List<SeasonInfo> seasons;
+  final List<Episode> episodes;
+
+  factory SeriesEpisodes.fromJson(Map<String, dynamic> j) => SeriesEpisodes(
+    seriesId: j['series_id'] as String? ?? '',
+    seriesTitle: j['series_title'] as String? ?? '',
+    mediaType: j['media_type'] as String? ?? 'tv',
+    currentSeason: (j['current_season'] as num?)?.toInt() ?? 1,
+    currentEpisode: (j['current_episode'] as num?)?.toInt() ?? 1,
+    seasons: [
+      for (final s in (j['seasons'] as List? ?? const []))
+        SeasonInfo.fromJson(s as Map<String, dynamic>),
+    ],
+    episodes: [
+      for (final e in (j['episodes'] as List? ?? const []))
+        Episode.fromJson(e as Map<String, dynamic>),
+    ],
+  );
+}
+

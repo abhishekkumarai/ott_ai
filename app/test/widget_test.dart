@@ -9,6 +9,7 @@ import 'package:ott_ai/chat/chat_screen.dart';
 import 'package:ott_ai/chat/models.dart';
 import 'package:ott_ai/main.dart';
 import 'package:ott_ai/player/player_handle.dart';
+import 'package:ott_ai/shell/recommended_rail.dart';
 import 'package:ott_ai/theme.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
@@ -49,6 +50,7 @@ class FakeApi extends ApiClient {
       return [_video('rrrrrrrrrrr', 'Related')];
     }
     if (path.endsWith('/chapters')) return chapters;
+    if (path.contains('/episodes')) return episodes;
     final saves = _saves.firstMatch(path);
     if (saves != null) {
       return [for (final id in saved[saves[1]] ?? const []) _video(id, id)];
@@ -59,6 +61,46 @@ class FakeApi extends ApiClient {
     }
     return [];
   }
+
+  Map<String, dynamic> episodes = {
+    'series_id': 'vidy:tv:1396',
+    'series_title': 'Breaking Bad',
+    'media_type': 'tv',
+    'current_season': 1,
+    'current_episode': 1,
+    'seasons': [
+      {'season_number': 1, 'name': 'Season 1', 'episode_count': 2},
+      {'season_number': 2, 'name': 'Season 2', 'episode_count': 2},
+    ],
+    'episodes': [
+      {
+        'youtube_id': 'vidy:tv:1396/1/1',
+        'series_id': 'vidy:tv:1396',
+        'series_title': 'Breaking Bad',
+        'title': 'Pilot',
+        'episode_number': 1,
+        'season_number': 1,
+        'duration_s': 3480,
+        'thumbnail': 'https://image.tmdb.org/t/p/w500/test1.jpg',
+        'overview': 'Walter White cooks meth.',
+        'provider': 'vidy',
+        'media_type': 'tv',
+      },
+      {
+        'youtube_id': 'vidy:tv:1396/1/2',
+        'series_id': 'vidy:tv:1396',
+        'series_title': 'Breaking Bad',
+        'title': "Cat's in the Bag...",
+        'episode_number': 2,
+        'season_number': 1,
+        'duration_s': 2880,
+        'thumbnail': 'https://image.tmdb.org/t/p/w500/test2.jpg',
+        'overview': 'Walt and Jesse dispose of bodies.',
+        'provider': 'vidy',
+        'media_type': 'tv',
+      },
+    ],
+  };
 
   Map<String, dynamic> models = {
     'models': [
@@ -202,6 +244,30 @@ void main() {
       expect(a.seconds, 25);
       expect(PlayerAction.fromJson({'type': 'rm -rf'}), isNull);
       expect(PlayerAction.fromJson(null), isNull);
+    });
+
+    test('Episode, SeasonInfo, SeriesEpisodes JSON parsing and toVideo()', () {
+      final ep = Episode.fromJson({
+        'youtube_id': 'vidy:tv:1396/1/1',
+        'series_id': 'vidy:tv:1396',
+        'series_title': 'Breaking Bad',
+        'title': 'Pilot',
+        'episode_number': 1,
+        'season_number': 1,
+        'duration_s': 3480,
+        'thumbnail': 'https://image.tmdb.org/t/p/w500/test.jpg',
+        'overview': 'A high school chemistry teacher...',
+        'provider': 'vidy',
+        'media_type': 'tv',
+      });
+      expect(ep.youtubeId, 'vidy:tv:1396/1/1');
+      expect(ep.episodeNumber, 1);
+      expect(ep.seasonNumber, 1);
+      final v = ep.toVideo();
+      expect(v.youtubeId, 'vidy:tv:1396/1/1');
+      expect(v.provider, 'vidy');
+      expect(v.mediaType, 'tv');
+      expect(v.title, 'Breaking Bad - S1E1: Pilot');
     });
   });
 
@@ -441,4 +507,63 @@ void main() {
       },
     );
   });
+
+  testWidgets(
+    'RecommendedRail shows episode list and switches episodes for TV series',
+    (tester) async {
+      final c = ProviderContainer(
+        overrides: [
+          apiProvider.overrideWithValue(FakeApi()),
+          playerViewBuilderProvider.overrideWithValue((_) => const SizedBox()),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      final seriesVideo = Video.fromJson({
+        'youtube_id': 'vidy:tv:1396',
+        'title': 'Breaking Bad',
+        'channel': 'AMC',
+        'duration_s': 3480,
+        'topic': 'tv',
+        'provider': 'vidy',
+        'media_type': 'tv',
+      });
+
+      // Play the TV series
+      c.read(chatProvider.notifier).play(seriesVideo);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: c,
+          child: const ShadApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 380,
+                height: 800,
+                child: RecommendedRail(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Verify Episodes tab is present and selected
+      expect(find.textContaining('Episodes'), findsOneWidget);
+      expect(find.textContaining('Recommended'), findsOneWidget);
+
+      // Verify episodes loaded from FakeApi
+      expect(find.textContaining('Pilot'), findsOneWidget);
+      expect(find.textContaining("Cat's in the Bag..."), findsOneWidget);
+
+      // Tap on second episode to play it
+      await tester.tap(find.textContaining("Cat's in the Bag..."));
+      await tester.pumpAndSettle();
+
+      // Verify now playing updated to episode 2
+      final nowPlaying = c.read(chatProvider).nowPlaying;
+      expect(nowPlaying?.youtubeId, 'vidy:tv:1396/1/2');
+    },
+  );
 }
+

@@ -43,6 +43,36 @@ class VideoOut(BaseModel):
         )
 
 
+class EpisodeOut(BaseModel):
+    youtube_id: str
+    series_id: str
+    series_title: str
+    title: str
+    episode_number: int
+    season_number: int = 1
+    duration_s: int = 0
+    thumbnail: str = ""
+    overview: str = ""
+    provider: str = "vidy"
+    media_type: str = "tv"
+
+
+class SeasonInfo(BaseModel):
+    season_number: int
+    name: str
+    episode_count: int
+
+
+class SeriesEpisodesOut(BaseModel):
+    series_id: str
+    series_title: str
+    media_type: str
+    current_season: int
+    current_episode: int
+    seasons: list[SeasonInfo] = []
+    episodes: list[EpisodeOut] = []
+
+
 class ChapterOut(BaseModel):
     start_s: int
     title: str
@@ -180,3 +210,20 @@ async def watched(request: Request, db: DB, user: CurrentUser, youtube_id: Youtu
         raise HTTPException(404, "Unknown video")
     db.add(WatchHistory(user_id=user.id, youtube_id=youtube_id))
     await db.commit()
+
+
+@router.get("/{media_id:path}/episodes", response_model=SeriesEpisodesOut)
+@limiter.limit("60/minute")
+async def get_episodes(
+    request: Request,
+    user: CurrentUser,
+    media_id: str = Path(min_length=1, max_length=60),
+    season: int | None = Query(default=None),
+):
+    from app.videos.vidy import get_series_episodes
+
+    data = await get_series_episodes(media_id, season)
+    if data is None:
+        raise HTTPException(404, "No episodes found for this media item")
+    return data
+
