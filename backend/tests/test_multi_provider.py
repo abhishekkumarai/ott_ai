@@ -63,3 +63,31 @@ async def test_multi_provider_chat_endpoint(client):
     assert len(data["videos"]) > 0
     assert data["videos"][0]["provider"] == "2embed"
     assert data["videos"][0]["youtube_id"].startswith("2embed:")
+
+
+@pytest.mark.asyncio
+async def test_all_verified_provider_drivers():
+    """Validates each verified provider driver individually for search and ID generation."""
+    providers = ["vidy", "2embed", "flixer", "bcine", "meowtv", "miruro", "kaa", "tubi"]
+    for pid in providers:
+        if pid in ("miruro", "kaa"):
+            res = await search_provider("anime 21 1", provider_id=pid)
+            assert len(res) >= 1
+            assert res[0].provider == pid
+            assert res[0].youtube_id == f"{pid}:anime:21/1"
+        elif pid == "tubi":
+            res = await search_provider("movie 99999", provider_id=pid)
+            assert len(res) >= 1
+            assert res[0].provider == pid
+            assert res[0].youtube_id == f"{pid}:movie:99999"
+        else:
+            res = await search_provider("Inception", provider_id=pid)
+            assert len(res) >= 1
+            assert all(v.provider == pid for v in res)
+            assert all(v.youtube_id.startswith(f"{pid}:") for v in res)
+
+    # Test unknown provider graceful fallback
+    fallback = await search_provider("Inception", provider_id="unknown_provider_xyz")
+    assert len(fallback) >= 1
+    assert all(v.provider == "vidy" for v in fallback)
+
