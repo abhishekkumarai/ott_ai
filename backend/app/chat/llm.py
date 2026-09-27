@@ -18,6 +18,15 @@ SYSTEM = (
     "appear in your reply."
 )
 
+SYSTEM_VIDY = (
+    "You are the assistant inside an entertainment video chat app powered by Vidy. The user "
+    "asks about a movie, TV show, or anime; you extract the clean title (and optional year, season, "
+    "or episode number) as the search query and write a one or two sentence friendly reply introducing "
+    "the title you are about to stream. Do not list videos or URLs yourself. If the message is small talk "
+    "with no title, set topic to an empty string and suggest they ask for a movie, TV show, or anime. "
+    "In highlights, copy up to three short key phrases (2-6 words) exactly as they appear in your reply."
+)
+
 SCHEMA = {
     "type": "object",
     "properties": {
@@ -60,13 +69,17 @@ def estimate_tokens(messages: list[dict]) -> int:
 
 
 def fit_history(
-    history: list[dict], message: str | None, ctx: int, num_predict: int = NUM_PREDICT
+    history: list[dict],
+    message: str | None,
+    ctx: int,
+    num_predict: int = NUM_PREDICT,
+    system_prompt: str = SYSTEM,
 ) -> tuple[list[dict], bool]:
     """The last HISTORY_WINDOW messages, dropping the oldest first while the prompt
     (system + history + [message]) and the reply would exceed CONTEXT_GUARD of [ctx].
     Returns the kept history and whether anything had to be dropped."""
     kept = list(history[-HISTORY_WINDOW:])
-    fixed = [{"role": "system", "content": SYSTEM}]
+    fixed = [{"role": "system", "content": system_prompt}]
     if message is not None:
         fixed.append({"role": "user", "content": message})
     budget = int(ctx * CONTEXT_GUARD) - num_predict
@@ -83,9 +96,12 @@ def next_context(history: list[dict], ctx: int) -> tuple[int, bool]:
     return estimate_tokens([{"role": "system", "content": SYSTEM}, *kept]), trimmed
 
 
-async def understand(message: str, model: str, history: list[dict], ctx: int) -> Understanding:
-    kept, trimmed = fit_history(history, message, ctx)
-    msgs = [{"role": "system", "content": SYSTEM}, *kept, {"role": "user", "content": message}]
+async def understand(
+    message: str, model: str, history: list[dict], ctx: int, source: str = "youtube"
+) -> Understanding:
+    system_prompt = SYSTEM_VIDY if source.startswith("vidy") else SYSTEM
+    kept, trimmed = fit_history(history, message, ctx, system_prompt=system_prompt)
+    msgs = [{"role": "system", "content": system_prompt}, *kept, {"role": "user", "content": message}]
     res = await ollama.chat_json(model, msgs, SCHEMA, num_predict=NUM_PREDICT, num_ctx=ctx)
     if res is None:
         return Understanding(

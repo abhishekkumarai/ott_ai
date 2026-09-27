@@ -16,6 +16,7 @@ from app.deps import DB, CurrentUser, limiter
 from app.models import Conversation, Message, SavedVideo, Video
 from app.videos import service
 from app.videos.router import VideoOut
+from app.videos.vidy import search_vidy
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
@@ -217,7 +218,42 @@ async def chat(request: Request, body: ChatIn, db: DB, user: CurrentUser):
     history = await _history(db, conv.id)
     db.add(Message(conversation_id=conv.id, role="user", content=text))
     ctx = await ollama.context_length(model)
-    u = await understand(text, model, history, ctx)
+    u = await understand(text, model, history, ctx, source=body.source)
+
+    if body.source.startswith("vidy"):
+        vidy_items = await search_vidy(u.topic or text, source=body.source)
+        videos_out = vidy_items[:3]
+        rail_out = vidy_items[3:] or vidy_items[:3]
+        source = "vidy"
+        reply = u.reply
+        if not vidy_items:
+            reply = f"I couldn't find a title for “{u.topic or text}”. Try another movie, show, or anime."
+        db.add(
+            Message(
+                conversation_id=conv.id,
+                role="assistant",
+                content=reply,
+                video_ids=[v.youtube_id for v in videos_out],
+                recommendations=[v.model_dump() for v in rail_out],
+                source="vidy",
+                model=model if u.used_llm else None,
+                prompt_tokens=u.prompt_tokens,
+                output_tokens=u.output_tokens,
+            )
+        )
+        await db.commit()
+        return ChatOut(
+            conversation_id=conv.id,
+            reply=reply,
+            videos=videos_out,
+            recommendations=rail_out,
+            source="vidy",
+            highlights=u.highlights if videos_out else [],
+            model=model if u.used_llm else None,
+            prompt_tokens=u.prompt_tokens,
+            output_tokens=u.output_tokens,
+            usage=await _usage(db, conv.id, model, u.trimmed),
+        )
 
     videos: list[Video] = []
     scores: dict[str, int] = {}
@@ -294,21 +330,59 @@ async def messages(conversation_id: ConvId, db: DB, user: CurrentUser):
         )
     ).all()
     ids = {i for m in msgs for i in m.video_ids} | {
-        r["youtube_id"] for m in msgs for r in (m.recommendations or [])
+        r["youtube_id"] for m in msgs for r in (m.recommendations or []) if isinstance(r, dict) and "youtube_id" in r
     }
-    vids = {v.youtube_id: v for v in await db.scalars(select(Video).where(Video.youtube_id.in_(ids)))} if ids else {}
+    yt_ids = {i for i in ids if not i.startswith("vidy:")}
+    vids = {v.youtube_id: v for v in await db.scalars(select(Video).where(Video.youtube_id.in_(yt_ids)))} if yt_ids else {}
+
+    vidy_rec_map: dict[str, dict] = {}
+    for m in msgs:
+        for r in m.recommendations or []:
+            if isinstance(r, dict) and "youtube_id" in r and r["youtube_id"].startswith("vidy:"):
+                vidy_rec_map[r["youtube_id"]] = r
+
+    def _resolve_video(vid: str) -> VideoOut | None:
+        if vid in vids:
+            return VideoOut.of(vids[vid])
+        if vid in vidy_rec_map:
+            try:
+                return VideoOut(**vidy_rec_map[vid])
+            except Exception:
+                pass
+        if vid.startswith("vidy:"):
+            parts = vid.split(":")
+            mtype = parts[1] if len(parts) > 1 else "movie"
+            return VideoOut(
+                youtube_id=vid,
+                title=f"{mtype.title()} {parts[2] if len(parts) > 2 else ''}",
+                channel="Vidy Stream",
+                duration_s=7200,
+                topic="Direct Stream",
+                thumbnail="https://vidy.st/favicon.svg",
+                provider="vidy",
+                media_type=mtype,
+            )
+        return None
+
+    def _resolve_rec(r: dict) -> VideoOut | None:
+        yid = r.get("youtube_id")
+        if yid in vids:
+            return VideoOut.of(vids[yid], r.get("match"))
+        if yid and yid.startswith("vidy:"):
+            try:
+                return VideoOut(**r)
+            except Exception:
+                return _resolve_video(yid)
+        return None
+
     return [
         MessageOut(
             role=m.role,
             content=m.content,
-            videos=[VideoOut.of(vids[i]) for i in m.video_ids if i in vids],
+            videos=[v for v in (_resolve_video(i) for i in m.video_ids) if v is not None],
             recommendations=None
             if m.recommendations is None
-            else [
-                VideoOut.of(vids[r["youtube_id"]], r.get("match"))
-                for r in m.recommendations
-                if r.get("youtube_id") in vids
-            ],
+            else [v for v in (_resolve_rec(r) for r in m.recommendations) if v is not None],
             source=m.source,
             model=m.model,
             prompt_tokens=m.prompt_tokens,
@@ -348,7 +422,7 @@ async def delete_conversation(conversation_id: ConvId, db: DB, user: CurrentUser
 
 # ------------------------------------------------------------------ saves (OTTAI-25)
 
-YoutubeId = Annotated[str, Path(pattern=r"^[A-Za-z0-9_-]{11}$")]
+MediaId = Annotated[str, Path(pattern=r"^([A-Za-z0-9_-]{11}|vidy:(movie|tv|anime):[A-Za-z0-9_/-]+)$")]
 MAX_SAVED = 500
 
 
@@ -356,25 +430,47 @@ MAX_SAVED = 500
 async def saved_videos(conversation_id: ConvId, db: DB, user: CurrentUser):
     """This chat's saves, newest first."""
     conv = await _conversation(db, user.id, conversation_id, "")
-    rows = await db.scalars(
-        select(Video)
-        .join(SavedVideo, SavedVideo.youtube_id == Video.youtube_id)
-        .where(SavedVideo.conversation_id == conv.id)
-        .order_by(SavedVideo.created_at.desc())
-        .limit(MAX_SAVED)
-    )
-    return [VideoOut.of(v) for v in rows]
+    saved_rows = (
+        await db.scalars(
+            select(SavedVideo)
+            .where(SavedVideo.conversation_id == conv.id)
+            .order_by(SavedVideo.created_at.desc())
+            .limit(MAX_SAVED)
+        )
+    ).all()
+    yt_ids = [s.youtube_id for s in saved_rows if not s.youtube_id.startswith("vidy:")]
+    vids = {v.youtube_id: v for v in await db.scalars(select(Video).where(Video.youtube_id.in_(yt_ids)))} if yt_ids else {}
+
+    out: list[VideoOut] = []
+    for s in saved_rows:
+        if s.youtube_id in vids:
+            out.append(VideoOut.of(vids[s.youtube_id]))
+        elif s.youtube_id.startswith("vidy:"):
+            parts = s.youtube_id.split(":")
+            mtype = parts[1] if len(parts) > 1 else "movie"
+            out.append(VideoOut(
+                youtube_id=s.youtube_id,
+                title=f"{mtype.title()} {parts[2] if len(parts) > 2 else ''}",
+                channel="Vidy Saved",
+                duration_s=7200,
+                topic="Saved Item",
+                thumbnail="https://vidy.st/favicon.svg",
+                provider="vidy",
+                media_type=mtype,
+            ))
+    return out
 
 
 @router.put("/conversations/{conversation_id}/saved/{youtube_id}", status_code=204)
 @limiter.limit("60/minute")
 async def save_video(
-    request: Request, conversation_id: ConvId, youtube_id: YoutubeId, db: DB, user: CurrentUser
+    request: Request, conversation_id: ConvId, youtube_id: MediaId, db: DB, user: CurrentUser
 ):
     """Idempotent: saving twice in one chat keeps one entry."""
     conv = await _conversation(db, user.id, conversation_id, "")
-    if await db.scalar(select(Video.id).where(Video.youtube_id == youtube_id)) is None:
-        raise HTTPException(404, "Unknown video")
+    if not youtube_id.startswith("vidy:"):
+        if await db.scalar(select(Video.id).where(Video.youtube_id == youtube_id)) is None:
+            raise HTTPException(404, "Unknown video")
     await db.execute(
         insert(SavedVideo)
         .values(user_id=user.id, conversation_id=conv.id, youtube_id=youtube_id)
@@ -387,7 +483,7 @@ async def save_video(
 @router.delete("/conversations/{conversation_id}/saved/{youtube_id}", status_code=204)
 @limiter.limit("60/minute")
 async def unsave_video(
-    request: Request, conversation_id: ConvId, youtube_id: YoutubeId, db: DB, user: CurrentUser
+    request: Request, conversation_id: ConvId, youtube_id: MediaId, db: DB, user: CurrentUser
 ):
     conv = await _conversation(db, user.id, conversation_id, "")
     await db.execute(
