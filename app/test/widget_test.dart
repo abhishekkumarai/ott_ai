@@ -323,6 +323,22 @@ void main() {
       expect(s.sending, isFalse);
       expect(s.messages.length, 1);
     });
+
+    test('activeSource defaults to youtube, setSource switches it and sends with chat', () async {
+      final chat = c.read(chatProvider.notifier);
+      expect(c.read(chatProvider).activeSource, 'youtube');
+      chat.setSource('vidy');
+      expect(c.read(chatProvider).activeSource, 'vidy');
+      api.onChat = (b) => {
+        'conversation_id': 'c1',
+        'reply': 'Vidy results',
+        'videos': [_video('vidy:movie:315162', 'Puss in Boots')],
+        'source': 'vidy',
+      };
+      await chat.send('puss in boots');
+      expect(api.sent.last['source'], 'vidy');
+      expect(c.read(chatProvider).messages.last.videos.first.youtubeId, 'vidy:movie:315162');
+    });
   });
 
   group('responsive', () {

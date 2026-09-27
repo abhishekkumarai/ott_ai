@@ -365,6 +365,14 @@ class _ChatBodyState extends ConsumerState<_ChatBody> {
                 Composer(
                   autofocus: true,
                   focusNode: _composerFocus,
+                  hint: switch (s.activeSource) {
+                    'vidy_movie' => 'Ask for any movie or say “play Inception”…',
+                    'vidy_tv' => 'Ask for a TV series or say “tv 1396 1 1”…',
+                    'vidy_anime' => 'Ask for an anime or say “anime 21 1”…',
+                    'vidy' =>
+                      'Ask for a movie, show, or anime, or say “play Inception”…',
+                    _ => 'Ask anything or say “skip ahead”…',
+                  },
                   // ← / → seek and Esc stops from the chat too.
                   playerKeys: s.playerOpen,
                 ),
@@ -440,10 +448,24 @@ class _EmptyState extends ConsumerWidget {
     'Hash tables and binary search trees',
   ];
 
+  static const _vidySuggestions = [
+    'Inception',
+    'Interstellar',
+    'Breaking Bad',
+    'Puss in Boots: The Last Wish',
+    'Stranger Things',
+    'Attack on Titan',
+  ];
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = ShadTheme.of(context);
     final narrow = MediaQuery.sizeOf(context).width < 600;
+    final isVidy = ref.watch(
+      chatProvider.select((s) => s.activeSource.startsWith('vidy')),
+    );
+    final suggestions = isVidy ? _vidySuggestions : _suggestions;
+
     return Center(
       child: SingleChildScrollView(
         // Same horizontal padding and max width as the composer below, so both
@@ -460,7 +482,9 @@ class _EmptyState extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'What do you want to learn today?',
+                isVidy
+                    ? 'What do you want to watch today?'
+                    : 'What do you want to learn today?',
                 style: theme.textTheme.h2.copyWith(
                   letterSpacing: -0.8,
                   fontWeight: FontWeight.w700,
@@ -468,8 +492,11 @@ class _EmptyState extends ConsumerWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Ask about any topic. I’ll find free videos with their key '
-                'moments; pick one to play it right here.',
+                isVidy
+                    ? 'Ask for any movie, show, or anime. Stream instantly right '
+                        'here with interactive controls.'
+                    : 'Ask about any topic. I’ll find free videos with their key '
+                        'moments; pick one to play it right here.',
                 style: theme.textTheme.muted.copyWith(fontSize: 15),
               ),
               const SizedBox(height: 20),
@@ -477,7 +504,7 @@ class _EmptyState extends ConsumerWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  for (final s in _suggestions)
+                  for (final s in suggestions)
                     ShadButton.outline(
                       size: ShadButtonSize.sm,
                       leading: const Icon(LucideIcons.sparkles, size: 13),

@@ -239,6 +239,7 @@ class ChatState {
     this.related = const {},
     this.loadingRelated = const {},
     this.played = const {},
+    this.activeSource = 'youtube',
     this.error,
   });
 
@@ -246,6 +247,9 @@ class ChatState {
   final String? conversationId;
   final bool sending;
   final List<ModelInfo> models;
+
+  /// Active media provider / source ('youtube', 'vidy', 'vidy_movie', 'vidy_tv', 'vidy_anime').
+  final String activeSource;
 
   /// The server's default model (used when no preference is saved).
   final String? defaultModel;
@@ -379,6 +383,7 @@ class ChatState {
     Map<String, List<Video>>? related,
     Set<String>? loadingRelated,
     Set<String>? played,
+    Object? activeSource = _keep,
     Object? error = _keep,
   }) => ChatState(
     messages: messages ?? this.messages,
@@ -398,6 +403,9 @@ class ChatState {
     related: related ?? this.related,
     loadingRelated: loadingRelated ?? this.loadingRelated,
     played: played ?? this.played,
+    activeSource: activeSource == _keep
+        ? this.activeSource
+        : activeSource as String,
     error: error == _keep ? this.error : error as String?,
   );
 }
@@ -487,6 +495,11 @@ class ChatController extends Notifier<ChatState> {
     unawaited(_loadUsage());
   }
 
+  /// Switch the media source for this chat (e.g. 'youtube', 'vidy', 'vidy_movie', 'vidy_tv', 'vidy_anime').
+  void setSource(String source) {
+    state = state.copyWith(activeSource: source);
+  }
+
   /// Context meter and trim flag for the open chat and its model.
   Future<void> _loadUsage() async {
     final id = state.conversationId;
@@ -524,6 +537,7 @@ class ChatController extends Notifier<ChatState> {
                 'conversation_id': ?state.conversationId,
                 'model': ?state.model,
                 'player_open': state.playerOpen,
+                'source': state.activeSource,
               })
               as Map<String, dynamic>;
       if (!ref.mounted) return;
@@ -878,10 +892,16 @@ class ChatController extends Notifier<ChatState> {
         .where((m) => m.role == Role.assistant && m.model != null)
         .firstOrNull
         ?.model;
+    final hasVidy = messages.any((m) => m.source == VideoSource.vidy);
+    final isVidyChat = messages.isNotEmpty && hasVidy;
+    final isYoutubeChat = messages.isNotEmpty && !hasVidy;
     state = state.copyWith(
       conversationId: c.id,
       messages: messages,
       model: _has(last) ? last : _startModel(),
+      activeSource: isVidyChat
+          ? 'vidy'
+          : (isYoutubeChat ? 'youtube' : state.activeSource),
       usage: null,
       railReply: null,
       played: const {},

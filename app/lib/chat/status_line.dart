@@ -24,6 +24,7 @@ class ChatStatusLine extends ConsumerWidget {
       spacing: 14,
       runSpacing: 2,
       children: [
+        const _SourcePicker(),
         if (aiOn) const _ModelPicker() else _mono(context, 'no LLM · keywords'),
         if (aiOn) const _ContextMeter(),
         const _TokensUsed(),
@@ -240,3 +241,188 @@ class _TokensUsed extends ConsumerWidget {
     );
   }
 }
+
+class MediaSourceOption {
+  const MediaSourceOption({
+    required this.id,
+    required this.label,
+    required this.shortLabel,
+    required this.subtitle,
+    required this.icon,
+  });
+
+  final String id;
+  final String label;
+  final String shortLabel;
+  final String subtitle;
+  final IconData icon;
+}
+
+const mediaSourceOptions = [
+  MediaSourceOption(
+    id: 'youtube',
+    label: 'YouTube',
+    shortLabel: 'YouTube',
+    subtitle: 'Curated learning videos & topics',
+    icon: LucideIcons.video,
+  ),
+  MediaSourceOption(
+    id: 'vidy',
+    label: 'Vidy (All Media)',
+    shortLabel: 'Vidy · All',
+    subtitle: 'Stream free movies, shows & anime',
+    icon: LucideIcons.film,
+  ),
+  MediaSourceOption(
+    id: 'vidy_movie',
+    label: 'Vidy · Movies',
+    shortLabel: 'Vidy · Movies',
+    subtitle: 'Feature films via TMDB',
+    icon: LucideIcons.clapperboard,
+  ),
+  MediaSourceOption(
+    id: 'vidy_tv',
+    label: 'Vidy · TV Series',
+    shortLabel: 'Vidy · TV',
+    subtitle: 'Television seasons & episodes',
+    icon: LucideIcons.tv,
+  ),
+  MediaSourceOption(
+    id: 'vidy_anime',
+    label: 'Vidy · Anime',
+    shortLabel: 'Vidy · Anime',
+    subtitle: 'Anime library via AniList',
+    icon: LucideIcons.sparkles,
+  ),
+];
+
+class _SourcePicker extends ConsumerStatefulWidget {
+  const _SourcePicker();
+
+  @override
+  ConsumerState<_SourcePicker> createState() => _SourcePickerState();
+}
+
+class _SourcePickerState extends ConsumerState<_SourcePicker> {
+  final _popover = ShadPopoverController();
+
+  @override
+  void dispose() {
+    _popover.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = ShadTheme.of(context);
+    final cs = theme.colorScheme;
+    final active = ref.watch(chatProvider.select((s) => s.activeSource));
+    final current = mediaSourceOptions.firstWhere(
+      (o) => o.id == active,
+      orElse: () => mediaSourceOptions.first,
+    );
+    final isVidy = active.startsWith('vidy');
+
+    return ShadPopover(
+      controller: _popover,
+      padding: const EdgeInsets.all(6),
+      anchor: const ShadAnchor(
+        childAlignment: Alignment.topCenter,
+        overlayAlignment: Alignment.bottomCenter,
+        offset: Offset(0, -6),
+      ),
+      popover: (context) => SizedBox(
+        width: 250,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+              child: _mono(context, 'MEDIA SOURCE FOR THIS CHAT'),
+            ),
+            for (final opt in mediaSourceOptions)
+              Tappable(
+                radius: 8,
+                selected: opt.id == active,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                semanticLabel: 'Select ${opt.label}',
+                onTap: () {
+                  _popover.hide();
+                  if (opt.id != active) {
+                    ref.read(chatProvider.notifier).setSource(opt.id);
+                  }
+                },
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      child: opt.id == active
+                          ? Icon(LucideIcons.check, size: 14, color: coral)
+                          : null,
+                    ),
+                    Icon(
+                      opt.icon,
+                      size: 14,
+                      color: opt.id == active ? coral : cs.mutedForeground,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            opt.label,
+                            style: mono(context, size: 12, color: cs.foreground),
+                          ),
+                          Text(
+                            opt.subtitle,
+                            style: theme.textTheme.muted.copyWith(fontSize: 10),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
+              child: Text(
+                'Switching source changes search & recommendations.',
+                style: theme.textTheme.muted.copyWith(fontSize: 11),
+              ),
+            ),
+          ],
+        ),
+      ),
+      child: ShadTooltip(
+        builder: (_) => const Text('Switch video source (YouTube or Vidy)'),
+        child: ShadButton.ghost(
+          size: ShadButtonSize.sm,
+          height: 24,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          gap: 4,
+          onPressed: _popover.toggle,
+          leading: Icon(
+            current.icon,
+            size: 12,
+            color: isVidy ? coral : cs.mutedForeground,
+          ),
+          trailing: Icon(
+            LucideIcons.chevronDown,
+            size: 12,
+            color: cs.mutedForeground,
+          ),
+          child: _mono(
+            context,
+            current.shortLabel,
+            color: isVidy ? coral : null,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
