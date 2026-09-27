@@ -10,6 +10,7 @@ import 'package:ott_ai/chat/models.dart';
 import 'package:ott_ai/main.dart';
 import 'package:ott_ai/player/player_handle.dart';
 import 'package:ott_ai/shell/recommended_rail.dart';
+import 'package:ott_ai/shell/top_bar.dart';
 import 'package:ott_ai/theme.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
@@ -52,6 +53,9 @@ class FakeApi extends ApiClient {
     if (path.endsWith('/chapters')) return chapters;
     if (path.contains('/episodes')) return episodes;
     if (path.endsWith('/providers')) return providers;
+    if (path == '/videos/search') {
+      return [_video('aaaaaaaaaaa', 'Inception Movie Result')];
+    }
     final saves = _saves.firstMatch(path);
     if (saves != null) {
       return [for (final id in saved[saves[1]] ?? const []) _video(id, id)];
@@ -624,6 +628,55 @@ void main() {
       // Verify now playing updated to episode 2
       final nowPlaying = c.read(chatProvider).nowPlaying;
       expect(nowPlaying?.youtubeId, 'vidy:tv:1396/1/2');
+    },
+  );
+
+  testWidgets(
+    'GlobalSearch results popover renders below the search bar without overflow',
+    (tester) async {
+      final api = FakeApi();
+      final c = ProviderContainer(
+        overrides: [
+          apiProvider.overrideWithValue(api),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: c,
+          child: const ShadApp(
+            home: Scaffold(
+              body: Align(
+                alignment: Alignment.topCenter,
+                child: SizedBox(
+                  width: 500,
+                  height: 50,
+                  child: GlobalSearch(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Enter search query
+      await tester.enterText(find.byType(ShadInput), 'Inception');
+      // Pump debounce timer
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+
+      // Verify result is displayed
+      expect(find.text('Inception Movie Result'), findsOneWidget);
+
+      // Get rects for input and search result
+      final inputRect = tester.getRect(find.byType(ShadInput));
+      final resultRect = tester.getRect(find.text('Inception Movie Result'));
+
+      // Popover must be positioned below the input, never overflowing above the screen (top >= 0)
+      expect(resultRect.top, greaterThanOrEqualTo(inputRect.bottom));
+      expect(resultRect.top, greaterThanOrEqualTo(0.0));
     },
   );
 }

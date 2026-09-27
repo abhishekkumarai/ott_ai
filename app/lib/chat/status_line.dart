@@ -70,8 +70,8 @@ class _ModelPickerState extends ConsumerState<_ModelPicker> {
       controller: _popover,
       padding: const EdgeInsets.all(6),
       anchor: const ShadAnchor(
-        childAlignment: Alignment.topCenter,
-        overlayAlignment: Alignment.bottomCenter,
+        childAlignment: Alignment.bottomCenter,
+        overlayAlignment: Alignment.topCenter,
         offset: Offset(0, -6),
       ),
       popover: (context) => SizedBox(
@@ -418,8 +418,8 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
       controller: _popover,
       padding: const EdgeInsets.all(6),
       anchor: const ShadAnchor(
-        childAlignment: Alignment.topCenter,
-        overlayAlignment: Alignment.bottomCenter,
+        childAlignment: Alignment.bottomCenter,
+        overlayAlignment: Alignment.topCenter,
         offset: Offset(0, -6),
       ),
       popover: (context) => SizedBox(

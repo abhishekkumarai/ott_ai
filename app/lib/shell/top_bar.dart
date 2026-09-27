@@ -197,21 +197,29 @@ class _GlobalSearchState extends ConsumerState<GlobalSearch> {
       child: Text(label, style: mono(context, size: 11)),
     );
 
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final popoverWidth = (screenWidth - 32).clamp(280.0, 440.0);
+    final popoverMaxHeight = (screenHeight - 80).clamp(200.0, 420.0);
+
     return ShadPopover(
       controller: _popover,
       padding: const EdgeInsets.all(6),
       anchor: const ShadAnchor(
-        childAlignment: Alignment.bottomLeft,
-        overlayAlignment: Alignment.topLeft,
+        childAlignment: Alignment.topLeft,
+        overlayAlignment: Alignment.bottomLeft,
         offset: Offset(0, 6),
       ),
       popover: (context) => SizedBox(
-        width: 440,
+        width: popoverWidth,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 420),
-          child: ListView(
-            shrinkWrap: true,
-            children: [
+          constraints: BoxConstraints(maxHeight: popoverMaxHeight),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: ListView(
+              padding: EdgeInsets.zero,
+              shrinkWrap: true,
+              children: [
               if (chatHits.isNotEmpty) section('CHATS'),
               for (final c in chatHits)
                 Tappable(
@@ -304,6 +312,7 @@ class _GlobalSearchState extends ConsumerState<GlobalSearch> {
           ),
         ),
       ),
+    ),
       child: ShadInput(
         controller: _text,
         focusNode: _focus,
