@@ -6,7 +6,7 @@
   'use strict';
 
   var YT_ID_RE = /^[A-Za-z0-9_-]{11}$/;
-  var VIDY_ID_RE = /^vidy:(movie|tv|anime):([A-Za-z0-9_/-]+)$/;
+  var STREAM_ID_RE = /^([a-z0-9_-]+):(movie|tv|anime|video):([A-Za-z0-9_/-]+)$/;
 
   var player = null;
   var ready = false;
@@ -19,9 +19,9 @@
   var desiredRate = null;
   function whenReady(fn) { if (ready) fn(); else pendingOps.push(fn); }
 
-  var activeProvider = 'youtube'; // 'youtube' | 'vidy'
-  var vidyIframe = null;
-  var vidyState = { t: 0, d: 0, playing: false };
+  var activeProvider = 'youtube'; // 'youtube' | 'vidy' | '2embed' | 'flixer' | etc.
+  var streamIframe = null;
+  var streamState = { t: 0, d: 0, playing: false };
 
   var QUALITY = { hd2160: '4K', hd1440: '1440p', hd1080: '1080p', hd720: '720p',
                   large: '480p', medium: '360p', small: '240p', tiny: '144p' };
@@ -30,9 +30,55 @@
     return !!(window.flutter_inappwebview && window.flutter_inappwebview.callHandler);
   };
 
-  function getVidyIframe() {
-    if (!vidyIframe) vidyIframe = document.getElementById('vidy');
-    return vidyIframe;
+  function getStreamFrame() {
+    if (!streamIframe) {
+      streamIframe = document.getElementById('vidy') ||
+                     document.getElementById('stream-frame') ||
+                     document.querySelector('iframe');
+    }
+    return streamIframe;
+  }
+  var getVidyIframe = getStreamFrame;
+
+  function buildProviderUrl(provider, mediaType, mediaId, start) {
+    var parts = mediaId.split('/');
+    var baseId = parts[0];
+    switch (provider) {
+      case 'vidy': {
+        var url = 'https://vidy.st/' + mediaType + '/' + mediaId + '?color=FF5A3D';
+        if (start > 0) url += '&progress=' + Math.round(start);
+        url += '&autoplay=true&nextEpisode=true&episodeSelector=true';
+        return url;
+      }
+      case '2embed': {
+        if (mediaType === 'tv' && parts.length >= 3) {
+          return 'https://www.2embed.cc/embedtv/' + baseId + '&s=' + parts[1] + '&e=' + parts[2];
+        }
+        return 'https://www.2embed.cc/embed/' + baseId;
+      }
+      case 'flixer': {
+        return 'https://flixer.gd/watch/' + mediaType + '/' + mediaId;
+      }
+      case 'bcine': {
+        return 'https://bcine.ru/embed/' + mediaType + '/' + mediaId;
+      }
+      case 'meowtv': {
+        return 'https://meowtv.ru/embed/' + mediaType + '/' + mediaId;
+      }
+      case 'miruro': {
+        var ep = parts[1] || '1';
+        return 'https://miruro.com/watch?id=' + baseId + '&ep=' + ep;
+      }
+      case 'kaa': {
+        return 'https://kaa.lt/watch/' + mediaId;
+      }
+      case 'tubi': {
+        return 'https://tubitv.com/movies/' + mediaId;
+      }
+      default: {
+        return 'https://vidy.st/' + mediaType + '/' + mediaId + '?color=FF5A3D&autoplay=true';
+      }
+    }
   }
 
   function emit(type, data) {
@@ -45,11 +91,11 @@
   }
 
   function state() {
-    if (activeProvider === 'vidy') {
+    if (activeProvider !== 'youtube') {
       return {
-        t: vidyState.t || 0,
-        d: vidyState.d || 0,
-        playing: !!vidyState.playing,
+        t: streamState.t || 0,
+        d: streamState.d || 0,
+        playing: !!streamState.playing,
         volume: 100,
         muted: false,
         rate: 1,
@@ -95,9 +141,12 @@
       if (typeof id !== 'string') return;
       start = Math.max(0, Number(start) || 0);
 
-      var vidyMatch = id.match(VIDY_ID_RE);
-      if (vidyMatch) {
-        activeProvider = 'vidy';
+      var streamMatch = id.match(STREAM_ID_RE);
+      if (streamMatch) {
+        var provider = streamMatch[1];
+        var mediaType = streamMatch[2]; // movie, tv, anime, video
+        var mediaId = streamMatch[3];   // e.g. 315162, 1396/1/1, 21/1
+        activeProvider = provider;
         clearLoop();
         stopTicking();
         if (ready && player && typeof player.pauseVideo === 'function') {
@@ -106,16 +155,12 @@
         var ytEl = document.getElementById('yt');
         if (ytEl) ytEl.style.display = 'none';
 
-        var vFrame = getVidyIframe();
+        var vFrame = getStreamFrame();
         if (vFrame) {
           vFrame.style.display = 'block';
-          var mediaType = vidyMatch[1]; // movie, tv, anime
-          var mediaId = vidyMatch[2];   // e.g. 315162, 1396/1/1, 21/1
-          var url = 'https://vidy.st/' + mediaType + '/' + mediaId + '?color=FF5A3D';
-          if (start > 0) url += '&progress=' + Math.round(start);
-          url += '&autoplay=true&nextEpisode=true&episodeSelector=true';
+          var url = buildProviderUrl(provider, mediaType, mediaId, start);
           vFrame.src = url;
-          vidyState = { t: start, d: 0, playing: true };
+          streamState = { t: start, d: 0, playing: true };
           startTicking();
           emit('time', state());
           emit('state', state());
@@ -125,7 +170,7 @@
 
       if (!YT_ID_RE.test(id)) return;
       activeProvider = 'youtube';
-      var vFrameOld = getVidyIframe();
+      var vFrameOld = getStreamFrame();
       if (vFrameOld) {
         vFrameOld.style.display = 'none';
         vFrameOld.src = 'about:blank';
@@ -143,7 +188,7 @@
       if (!isFinite(n)) return;
       var s = state();
       var target = Math.max(0, s.t + n);
-      if (activeProvider === 'vidy') {
+      if (activeProvider !== 'youtube') {
         api.seekTo(target);
         return;
       }
@@ -157,9 +202,9 @@
       emit('time', { t: target, d: s.d, playing: true });
     },
     pause: function () {
-      if (activeProvider === 'vidy') {
-        vidyState.playing = false;
-        var vf = getVidyIframe();
+      if (activeProvider !== 'youtube') {
+        streamState.playing = false;
+        var vf = getStreamFrame();
         if (vf && vf.contentWindow) {
           try { vf.contentWindow.postMessage(JSON.stringify({ event: 'pause' }), '*'); } catch (e) {}
         }
@@ -169,9 +214,9 @@
       if (ready && player) player.pauseVideo();
     },
     play: function () {
-      if (activeProvider === 'vidy') {
-        vidyState.playing = true;
-        var vf = getVidyIframe();
+      if (activeProvider !== 'youtube') {
+        streamState.playing = true;
+        var vf = getStreamFrame();
         if (vf && vf.contentWindow) {
           try { vf.contentWindow.postMessage(JSON.stringify({ event: 'play' }), '*'); } catch (e) {}
         }
@@ -183,10 +228,10 @@
     stop: function () {
       clearLoop();
       stopTicking();
-      if (activeProvider === 'vidy') {
+      if (activeProvider !== 'youtube') {
         var s = state();
-        vidyState.playing = false;
-        var vf = getVidyIframe();
+        streamState.playing = false;
+        var vf = getStreamFrame();
         if (vf) {
           vf.style.display = 'none';
           vf.src = 'about:blank';
@@ -202,7 +247,7 @@
       emit('stopped', sYt);
     },
     unmute: function () {
-      if (activeProvider === 'vidy') return;
+      if (activeProvider !== 'youtube') return;
       whenReady(function () {
         player.unMute();
         if (player.getVolume() === 0) player.setVolume(100);
@@ -210,19 +255,19 @@
       });
     },
     mute: function () {
-      if (activeProvider === 'vidy') return;
+      if (activeProvider !== 'youtube') return;
       whenReady(function () { player.mute(); emit('time', state()); });
     },
     seekTo: function (t) {
       t = Number(t);
       if (!isFinite(t)) return;
-      if (activeProvider === 'vidy') {
-        vidyState.t = t;
-        var vf = getVidyIframe();
+      if (activeProvider !== 'youtube') {
+        streamState.t = t;
+        var vf = getStreamFrame();
         if (vf && vf.contentWindow) {
           try { vf.contentWindow.postMessage(JSON.stringify({ event: 'seek', currentTime: t }), '*'); } catch (e) {}
         }
-        emit('time', { t: t, d: vidyState.d, playing: vidyState.playing });
+        emit('time', { t: t, d: streamState.d, playing: streamState.playing });
         return;
       }
       if (!ready || !player) return;
@@ -233,7 +278,7 @@
       emit('time', { t: t, d: d, playing: true });
     },
     setVolume: function (v) {
-      if (activeProvider === 'vidy') return;
+      if (activeProvider !== 'youtube') return;
       v = Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
       whenReady(function () {
         player.setVolume(v);
@@ -242,14 +287,14 @@
       });
     },
     setRate: function (r) {
-      if (activeProvider === 'vidy') return;
+      if (activeProvider !== 'youtube') return;
       r = Number(r);
       if ([0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].indexOf(r) < 0) return;
       desiredRate = r;
       whenReady(function () { player.setPlaybackRate(r); emit('time', state()); });
     },
     captions: function (on) {
-      if (activeProvider === 'vidy') return;
+      if (activeProvider !== 'youtube') return;
       if (!ready) { whenReady(function () { api.captions(on); }); return; }
       captionsOn = !!on;
       try {
@@ -290,9 +335,9 @@
     }, 1500);
   }
 
-  // Handle incoming messages from both Flutter parent window and Vidy iframe.
+  // Handle incoming messages from both Flutter parent window and stream iframe.
   window.addEventListener('message', function (e) {
-    var vf = getVidyIframe();
+    var vf = getStreamFrame();
     if (vf && e.source === vf.contentWindow) {
       var payload = e.data;
       if (typeof payload === 'string') {
@@ -300,18 +345,18 @@
       }
       if (!payload || typeof payload !== 'object') return;
       if (payload.event === 'timeupdate') {
-        if (typeof payload.currentTime === 'number') vidyState.t = payload.currentTime;
-        if (typeof payload.duration === 'number') vidyState.d = payload.duration;
-        vidyState.playing = true;
+        if (typeof payload.currentTime === 'number') streamState.t = payload.currentTime;
+        if (typeof payload.duration === 'number') streamState.d = payload.duration;
+        streamState.playing = true;
         emit('time', state());
       } else if (payload.event === 'play') {
-        vidyState.playing = true;
+        streamState.playing = true;
         emit('state', state());
       } else if (payload.event === 'pause') {
-        vidyState.playing = false;
+        streamState.playing = false;
         emit('state', state());
       } else if (payload.event === 'ended') {
-        vidyState.playing = false;
+        streamState.playing = false;
         emit('ended', state());
       }
       return;
@@ -382,7 +427,7 @@
   // Allow a direct URL for native WebViews: player.html#v=<id>&t=<start>
   var hash = new URLSearchParams(window.location.hash.slice(1));
   var hashV = hash.get('v');
-  if (hashV && (YT_ID_RE.test(hashV) || VIDY_ID_RE.test(hashV))) {
+  if (hashV && (YT_ID_RE.test(hashV) || STREAM_ID_RE.test(hashV))) {
     pending = { id: hashV, start: Number(hash.get('t')) || 0 };
   }
 })();

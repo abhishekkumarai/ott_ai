@@ -249,6 +249,7 @@ class MediaSourceOption {
     required this.shortLabel,
     required this.subtitle,
     required this.icon,
+    this.isVerified = true,
   });
 
   final String id;
@@ -256,6 +257,7 @@ class MediaSourceOption {
   final String shortLabel;
   final String subtitle;
   final IconData icon;
+  final bool isVerified;
 }
 
 const mediaSourceOptions = [
@@ -312,16 +314,105 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
     super.dispose();
   }
 
+  List<MediaSourceOption> _buildOptions(List<StreamProviderInfo> verified) {
+    if (verified.isEmpty) return mediaSourceOptions;
+
+    final options = <MediaSourceOption>[];
+    for (final p in verified) {
+      if (p.id == 'youtube') {
+        options.add(
+          const MediaSourceOption(
+            id: 'youtube',
+            label: 'YouTube',
+            shortLabel: 'YouTube',
+            subtitle: 'Curated learning videos & topics',
+            icon: LucideIcons.video,
+            isVerified: true,
+          ),
+        );
+      } else if (p.id == 'vidy') {
+        options.add(
+          const MediaSourceOption(
+            id: 'vidy',
+            label: 'Vidy (All Media)',
+            shortLabel: 'Vidy · All',
+            subtitle: 'Stream free movies, shows & anime',
+            icon: LucideIcons.film,
+            isVerified: true,
+          ),
+        );
+        options.add(
+          const MediaSourceOption(
+            id: 'vidy_movie',
+            label: 'Vidy · Movies',
+            shortLabel: 'Vidy · Movies',
+            subtitle: 'Feature films via TMDB',
+            icon: LucideIcons.clapperboard,
+            isVerified: true,
+          ),
+        );
+        options.add(
+          const MediaSourceOption(
+            id: 'vidy_tv',
+            label: 'Vidy · TV Series',
+            shortLabel: 'Vidy · TV',
+            subtitle: 'Television seasons & episodes',
+            icon: LucideIcons.tv,
+            isVerified: true,
+          ),
+        );
+        options.add(
+          const MediaSourceOption(
+            id: 'vidy_anime',
+            label: 'Vidy · Anime',
+            shortLabel: 'Vidy · Anime',
+            subtitle: 'Anime library via AniList',
+            icon: LucideIcons.sparkles,
+            isVerified: true,
+          ),
+        );
+      } else {
+        final IconData icon;
+        final String sub;
+        if (p.category == 'anime') {
+          icon = LucideIcons.sparkles;
+          sub = 'Anime library via AniList';
+        } else if (p.category == 'free_vod') {
+          icon = LucideIcons.monitorPlay;
+          sub = 'Free on-demand movies';
+        } else {
+          icon = LucideIcons.film;
+          sub = 'Multi-stream movies & TV';
+        }
+        options.add(
+          MediaSourceOption(
+            id: p.id,
+            label: p.name,
+            shortLabel: p.name.split(' ').first,
+            subtitle: sub,
+            icon: icon,
+            isVerified: true,
+          ),
+        );
+      }
+    }
+    return options;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = ShadTheme.of(context);
     final cs = theme.colorScheme;
     final active = ref.watch(chatProvider.select((s) => s.activeSource));
-    final current = mediaSourceOptions.firstWhere(
+    final verifiedAsync = ref.watch(verifiedProvidersProvider);
+    final verifiedList = verifiedAsync.value ?? const [];
+    final options = _buildOptions(verifiedList);
+
+    final current = options.firstWhere(
       (o) => o.id == active,
-      orElse: () => mediaSourceOptions.first,
+      orElse: () => options.first,
     );
-    final isVidy = active.startsWith('vidy');
+    final isCustom = active != 'youtube';
 
     return ShadPopover(
       controller: _popover,
@@ -332,73 +423,113 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
         offset: Offset(0, -6),
       ),
       popover: (context) => SizedBox(
-        width: 250,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
-              child: _mono(context, 'MEDIA SOURCE FOR THIS CHAT'),
-            ),
-            for (final opt in mediaSourceOptions)
-              Tappable(
-                radius: 8,
-                selected: opt.id == active,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-                semanticLabel: 'Select ${opt.label}',
-                onTap: () {
-                  _popover.hide();
-                  if (opt.id != active) {
-                    ref.read(chatProvider.notifier).setSource(opt.id);
-                  }
-                },
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 20,
-                      child: opt.id == active
-                          ? Icon(LucideIcons.check, size: 14, color: coral)
-                          : null,
-                    ),
-                    Icon(
-                      opt.icon,
-                      size: 14,
-                      color: opt.id == active ? coral : cs.mutedForeground,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+        width: 260,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 380),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _mono(context, 'STREAMING SOURCE'),
+                      Row(
                         children: [
-                          Text(
-                            opt.label,
-                            style: mono(context, size: 12, color: cs.foreground),
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF10B981),
+                              shape: BoxShape.circle,
+                            ),
                           ),
-                          Text(
-                            opt.subtitle,
-                            style: theme.textTheme.muted.copyWith(fontSize: 10),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          const SizedBox(width: 4),
+                          _mono(context, 'verified', color: const Color(0xFF10B981)),
                         ],
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
-              child: Text(
-                'Switching source changes search & recommendations.',
-                style: theme.textTheme.muted.copyWith(fontSize: 11),
-              ),
+                for (final opt in options)
+                  Tappable(
+                    radius: 8,
+                    selected: opt.id == active,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                    semanticLabel: 'Select ${opt.label}',
+                    onTap: () {
+                      _popover.hide();
+                      if (opt.id != active) {
+                        ref.read(chatProvider.notifier).setSource(opt.id);
+                      }
+                    },
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 20,
+                          child: opt.id == active
+                              ? Icon(LucideIcons.check, size: 14, color: coral)
+                              : null,
+                        ),
+                        Icon(
+                          opt.icon,
+                          size: 14,
+                          color: opt.id == active ? coral : cs.mutedForeground,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      opt.label,
+                                      style: mono(context, size: 12, color: cs.foreground),
+                                    ),
+                                  ),
+                                  if (opt.isVerified)
+                                    Container(
+                                      width: 6,
+                                      height: 6,
+                                      margin: const EdgeInsets.only(left: 4),
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFF10B981),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              Text(
+                                opt.subtitle,
+                                style: theme.textTheme.muted.copyWith(fontSize: 10),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
+                  child: Text(
+                    'Sources are automatically audited for live stream health.',
+                    style: theme.textTheme.muted.copyWith(fontSize: 11),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
       child: ShadTooltip(
-        builder: (_) => const Text('Switch video source (YouTube or Vidy)'),
+        builder: (_) => const Text('Switch video streaming source'),
         child: ShadButton.ghost(
           size: ShadButtonSize.sm,
           height: 24,
@@ -408,7 +539,7 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
           leading: Icon(
             current.icon,
             size: 12,
-            color: isVidy ? coral : cs.mutedForeground,
+            color: isCustom ? coral : cs.mutedForeground,
           ),
           trailing: Icon(
             LucideIcons.chevronDown,
@@ -418,7 +549,7 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
           child: _mono(
             context,
             current.shortLabel,
-            color: isVidy ? coral : null,
+            color: isCustom ? coral : null,
           ),
         ),
       ),

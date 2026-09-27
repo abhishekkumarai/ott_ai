@@ -78,7 +78,7 @@ class PlayerHandle {
   final List<void Function(PlayerTransport)> _queue = [];
 
   static final _id = RegExp(
-    r'^([A-Za-z0-9_-]{11}|vidy:(movie|tv|anime):[A-Za-z0-9_/-]+)$',
+    r'^([A-Za-z0-9_-]{11}|[a-z0-9_-]+:(movie|tv|anime|video):[A-Za-z0-9_/-]+)$',
   );
 
   Stream<PlayerEvent> get events => _events.stream;

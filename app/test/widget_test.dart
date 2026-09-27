@@ -334,6 +334,16 @@ void main() {
       expect(t.calls, ['load:aaaaaaaaaaa']);
       h.load('vidy:movie:315162');
       expect(t.calls.last, 'load:vidy:movie:315162');
+      h.load('2embed:movie:550');
+      expect(t.calls.last, 'load:2embed:movie:550');
+      h.load('flixer:tv:1396/1/1');
+      expect(t.calls.last, 'load:flixer:tv:1396/1/1');
+      h.load('miruro:anime:21/5');
+      expect(t.calls.last, 'load:miruro:anime:21/5');
+      h.load('tubi:movie:99999');
+      expect(t.calls.last, 'load:tubi:movie:99999');
+      h.load('invalid::id');
+      expect(t.calls.last, 'load:tubi:movie:99999'); // rejected, unchanged
       h.seekBy(25);
       h.stop();
       expect(t.calls.last, 'stop');
