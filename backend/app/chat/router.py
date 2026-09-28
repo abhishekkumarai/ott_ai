@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import uuid
 from datetime import datetime
 from typing import Annotated, Literal
@@ -15,10 +16,19 @@ from app.config import get_settings
 from app.deps import DB, CurrentUser, limiter
 from app.models import Conversation, Message, SavedVideo, Video
 from app.videos import service
+from app.videos.provider_pipeline import provider_registry
 from app.videos.router import VideoOut
 from app.videos.vidy import search_vidy
 
+log = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api", tags=["chat"])
+
+
+def _stream_provider_prefix(media_id: str) -> str | None:
+    """Returns the provider id if `media_id` is a `<provider>:<type>:<id>` stream id."""
+    provider_id = media_id.split(":", 1)[0]
+    return provider_id if provider_id in provider_registry.known_provider_ids() else None
 
 
 class ChatIn(BaseModel):
@@ -334,34 +344,36 @@ async def messages(conversation_id: ConvId, db: DB, user: CurrentUser):
     ids = {i for m in msgs for i in m.video_ids} | {
         r["youtube_id"] for m in msgs for r in (m.recommendations or []) if isinstance(r, dict) and "youtube_id" in r
     }
-    yt_ids = {i for i in ids if not i.startswith("vidy:")}
+    yt_ids = {i for i in ids if _stream_provider_prefix(i) is None}
     vids = {v.youtube_id: v for v in await db.scalars(select(Video).where(Video.youtube_id.in_(yt_ids)))} if yt_ids else {}
 
-    vidy_rec_map: dict[str, dict] = {}
+    stream_rec_map: dict[str, dict] = {}
     for m in msgs:
         for r in m.recommendations or []:
-            if isinstance(r, dict) and "youtube_id" in r and r["youtube_id"].startswith("vidy:"):
-                vidy_rec_map[r["youtube_id"]] = r
+            if isinstance(r, dict) and "youtube_id" in r and _stream_provider_prefix(r["youtube_id"]) is not None:
+                stream_rec_map[r["youtube_id"]] = r
 
     def _resolve_video(vid: str) -> VideoOut | None:
         if vid in vids:
             return VideoOut.of(vids[vid])
-        if vid in vidy_rec_map:
+        if vid in stream_rec_map:
             try:
-                return VideoOut(**vidy_rec_map[vid])
+                return VideoOut(**stream_rec_map[vid])
             except Exception:
-                pass
-        if vid.startswith("vidy:"):
+                log.warning("Malformed stream recommendation for %r, dropping", vid, exc_info=True)
+        provider_id = _stream_provider_prefix(vid)
+        if provider_id is not None:
             parts = vid.split(":")
             mtype = parts[1] if len(parts) > 1 else "movie"
+            provider = provider_registry.get_provider(provider_id)
             return VideoOut(
                 youtube_id=vid,
                 title=f"{mtype.title()} {parts[2] if len(parts) > 2 else ''}",
-                channel="Vidy Stream",
+                channel=f"{provider.name if provider else provider_id} Stream",
                 duration_s=7200,
                 topic="Direct Stream",
-                thumbnail="https://vidy.st/favicon.svg",
-                provider="vidy",
+                thumbnail=f"{provider.base_url}/favicon.svg" if provider else "https://vidy.st/favicon.svg",
+                provider=provider_id,
                 media_type=mtype,
             )
         return None
@@ -370,7 +382,7 @@ async def messages(conversation_id: ConvId, db: DB, user: CurrentUser):
         yid = r.get("youtube_id")
         if yid in vids:
             return VideoOut.of(vids[yid], r.get("match"))
-        if yid and yid.startswith("vidy:"):
+        if yid and _stream_provider_prefix(yid) is not None:
             try:
                 return VideoOut(**r)
             except Exception:
@@ -424,7 +436,9 @@ async def delete_conversation(conversation_id: ConvId, db: DB, user: CurrentUser
 
 # ------------------------------------------------------------------ saves (OTTAI-25)
 
-MediaId = Annotated[str, Path(pattern=r"^([A-Za-z0-9_-]{11}|vidy:(movie|tv|anime):[A-Za-z0-9_/-]+)$")]
+_PROVIDER_ID_ALT = "|".join(sorted(provider_registry.known_provider_ids()))
+_MEDIA_ID_PATTERN = rf"^([A-Za-z0-9_-]{{11}}|({_PROVIDER_ID_ALT}):(movie|tv|anime):[A-Za-z0-9_/-]+)$"
+MediaId = Annotated[str, Path(pattern=_MEDIA_ID_PATTERN)]
 MAX_SAVED = 500
 
 
@@ -440,24 +454,26 @@ async def saved_videos(conversation_id: ConvId, db: DB, user: CurrentUser):
             .limit(MAX_SAVED)
         )
     ).all()
-    yt_ids = [s.youtube_id for s in saved_rows if not s.youtube_id.startswith("vidy:")]
+    yt_ids = [s.youtube_id for s in saved_rows if _stream_provider_prefix(s.youtube_id) is None]
     vids = {v.youtube_id: v for v in await db.scalars(select(Video).where(Video.youtube_id.in_(yt_ids)))} if yt_ids else {}
 
     out: list[VideoOut] = []
     for s in saved_rows:
+        provider_id = _stream_provider_prefix(s.youtube_id)
         if s.youtube_id in vids:
             out.append(VideoOut.of(vids[s.youtube_id]))
-        elif s.youtube_id.startswith("vidy:"):
+        elif provider_id is not None:
             parts = s.youtube_id.split(":")
             mtype = parts[1] if len(parts) > 1 else "movie"
+            provider = provider_registry.get_provider(provider_id)
             out.append(VideoOut(
                 youtube_id=s.youtube_id,
                 title=f"{mtype.title()} {parts[2] if len(parts) > 2 else ''}",
-                channel="Vidy Saved",
+                channel=f"{provider.name if provider else provider_id} Saved",
                 duration_s=7200,
                 topic="Saved Item",
-                thumbnail="https://vidy.st/favicon.svg",
-                provider="vidy",
+                thumbnail=f"{provider.base_url}/favicon.svg" if provider else "https://vidy.st/favicon.svg",
+                provider=provider_id,
                 media_type=mtype,
             ))
     return out
@@ -470,7 +486,7 @@ async def save_video(
 ):
     """Idempotent: saving twice in one chat keeps one entry."""
     conv = await _conversation(db, user.id, conversation_id, "")
-    if not youtube_id.startswith("vidy:"):
+    if _stream_provider_prefix(youtube_id) is None:
         if await db.scalar(select(Video.id).where(Video.youtube_id == youtube_id)) is None:
             raise HTTPException(404, "Unknown video")
     await db.execute(

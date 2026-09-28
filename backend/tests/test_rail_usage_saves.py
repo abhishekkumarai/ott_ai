@@ -228,6 +228,33 @@ async def test_saves_roundtrip_in_one_chat(client):
     assert (await client.get("/api/me/saved", headers=h)).status_code == 404  # removed
 
 
+async def test_saves_roundtrip_for_non_vidy_provider(client):
+    """Regression: saving/resolving a non-vidy stream id (e.g. 2embed, flixer) used to
+    422 on save and get silently dropped from history/saves (OTTAI-39/40 gap)."""
+    h = auth((await register(client))["access_token"])
+    cid = (await _chat(client, h, "hello"))["conversation_id"]
+    base = f"/api/conversations/{cid}/saved"
+    assert (await client.put(f"{base}/2embed:movie:550", headers=h)).status_code == 204
+    assert (await client.put(f"{base}/flixer:movie:1396", headers=h)).status_code == 204
+    ids = {v["youtube_id"] for v in (await client.get(base, headers=h)).json()}
+    assert ids == {"2embed:movie:550", "flixer:movie:1396"}
+
+    msgs_before = len((await client.get(f"/api/conversations/{cid}/messages", headers=h)).json())
+    async with SessionLocal() as db:
+        db.add(Message(
+            conversation_id=cid, role="assistant", content="here", video_ids=["2embed:movie:550"],
+        ))
+        await db.commit()
+    msgs = (await client.get(f"/api/conversations/{cid}/messages", headers=h)).json()
+    assert len(msgs) == msgs_before + 1
+    assert [v["youtube_id"] for v in msgs[-1]["videos"]] == ["2embed:movie:550"]
+    assert msgs[-1]["videos"][0]["provider"] == "2embed"
+
+    assert (await client.delete(f"{base}/2embed:movie:550", headers=h)).status_code == 204
+    ids = {v["youtube_id"] for v in (await client.get(base, headers=h)).json()}
+    assert ids == {"flixer:movie:1396"}
+
+
 async def test_saves_belong_to_their_chat(client):
     await seed_catalog()
     h = auth((await register(client))["access_token"])

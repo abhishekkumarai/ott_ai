@@ -1,6 +1,7 @@
 import pytest
 
 from app.videos.multi_provider import search_provider
+from app.videos.provider_pipeline import provider_registry
 
 
 @pytest.mark.asyncio
@@ -67,24 +68,32 @@ async def test_multi_provider_chat_endpoint(client):
 
 @pytest.mark.asyncio
 async def test_all_verified_provider_drivers():
-    """Validates each verified provider driver individually for search and ID generation."""
-    providers = ["vidy", "2embed", "flixer", "bcine", "meowtv", "miruro", "kaa", "tubi"]
+    """Validates every catalogued provider driver (including currently-DOWN ones) for
+    search and ID generation via the direct-route syntax, which bypasses network/TMDB
+    key requirements entirely and so must always resolve for any known provider id."""
+    providers = [p.id for p in provider_registry.get_all() if p.id != "youtube"]
+    assert set(providers) >= {
+        "vidy", "2embed", "flixer", "bcine", "meowtv", "miruro", "kaa", "tubi",
+        "cinejoy", "rive", "popcorn", "animepahe", "anicine",
+    }
+
+    anime_providers = {"miruro", "kaa", "animepahe", "anicine"}
     for pid in providers:
-        if pid in ("miruro", "kaa"):
-            res = await search_provider("anime 21 1", provider_id=pid)
-            assert len(res) >= 1
-            assert res[0].provider == pid
-            assert res[0].youtube_id == f"{pid}:anime:21/1"
-        elif pid == "tubi":
+        if pid == "tubi":
             res = await search_provider("movie 99999", provider_id=pid)
             assert len(res) >= 1
             assert res[0].provider == pid
             assert res[0].youtube_id == f"{pid}:movie:99999"
-        else:
-            res = await search_provider("Inception", provider_id=pid)
+        elif pid in anime_providers:
+            res = await search_provider("anime 21 1", provider_id=pid)
             assert len(res) >= 1
-            assert all(v.provider == pid for v in res)
-            assert all(v.youtube_id.startswith(f"{pid}:") for v in res)
+            assert res[0].provider == pid
+            assert res[0].youtube_id == f"{pid}:anime:21/1"
+        else:
+            res = await search_provider("movie 550", provider_id=pid)
+            assert len(res) >= 1
+            assert res[0].provider == pid
+            assert res[0].youtube_id == f"{pid}:movie:550"
 
     # Test unknown provider graceful fallback
     fallback = await search_provider("Inception", provider_id="unknown_provider_xyz")

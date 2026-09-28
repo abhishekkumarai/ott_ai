@@ -330,6 +330,10 @@ class ProviderRegistry:
     def get_provider(self, provider_id: str) -> StreamProviderConfig | None:
         return self._providers.get(provider_id)
 
+    def known_provider_ids(self) -> set[str]:
+        """All catalogued provider ids, used to recognize `<provider>:...` media ids."""
+        return set(self._providers.keys())
+
     def get_verified_providers(self) -> list[StreamProviderConfig]:
         """Returns only verified healthy providers suitable for user-facing embeds."""
         return [

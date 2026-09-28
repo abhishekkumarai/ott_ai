@@ -75,6 +75,24 @@
       case 'tubi': {
         return 'https://tubitv.com/movies/' + mediaId;
       }
+      case 'cinejoy': {
+        return 'https://cinejoy.pk/embed/' + mediaType + '/' + mediaId;
+      }
+      case 'rive': {
+        var url2 = 'https://rivestream.app/embed?type=' + mediaType + '&id=' + baseId;
+        if (parts.length >= 3) url2 += '&season=' + parts[1] + '&episode=' + parts[2];
+        else if (parts.length >= 2) url2 += '&episode=' + parts[1];
+        return url2;
+      }
+      case 'popcorn': {
+        return 'https://popcornmovies.ac/embed/' + mediaType + '/' + mediaId;
+      }
+      case 'animepahe': {
+        return 'https://animepahe.pw/play/' + mediaId;
+      }
+      case 'anicine': {
+        return 'https://anicine.xyz/watch/' + mediaId;
+      }
       default: {
         return 'https://vidy.st/' + mediaType + '/' + mediaId + '?color=FF5A3D&autoplay=true';
       }
