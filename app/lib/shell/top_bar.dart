@@ -8,6 +8,7 @@ import '../api/api.dart';
 import '../auth/auth.dart';
 import '../chat/chat_controller.dart';
 import '../chat/models.dart';
+import '../chat/status_line.dart';
 import '../settings/preferences.dart';
 import '../theme.dart';
 import '../widgets/tappable.dart';
@@ -53,6 +54,8 @@ class TopBar extends ConsumerWidget {
                 const SizedBox(width: 12),
                 const RecommendedButton(),
               ],
+              const SizedBox(width: 12),
+              const SourcePicker(),
               const SizedBox(width: 12),
               ShadTooltip(
                 builder: (_) => Text(
@@ -220,99 +223,99 @@ class _GlobalSearchState extends ConsumerState<GlobalSearch> {
               padding: EdgeInsets.zero,
               shrinkWrap: true,
               children: [
-              if (chatHits.isNotEmpty) section('CHATS'),
-              for (final c in chatHits)
-                Tappable(
-                  radius: 8,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 8,
-                  ),
-                  onTap: () {
-                    _close();
-                    chat.open(c);
-                  },
-                  child: Row(
-                    children: [
-                      Icon(
-                        LucideIcons.messageSquare,
-                        size: 14,
-                        color: cs.mutedForeground,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          c.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.small,
+                if (chatHits.isNotEmpty) section('CHATS'),
+                for (final c in chatHits)
+                  Tappable(
+                    radius: 8,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    onTap: () {
+                      _close();
+                      chat.open(c);
+                    },
+                    child: Row(
+                      children: [
+                        Icon(
+                          LucideIcons.messageSquare,
+                          size: 14,
+                          color: cs.mutedForeground,
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              section(_loading ? 'VIDEOS · searching…' : 'VIDEOS'),
-              if (!_loading && _videos.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 2, 10, 10),
-                  child: Text(
-                    'No videos match yet.',
-                    style: theme.textTheme.muted,
-                  ),
-                ),
-              for (final v in _videos)
-                Tappable(
-                  radius: 8,
-                  padding: const EdgeInsets.all(6),
-                  onTap: () {
-                    _close();
-                    chat.play(v);
-                  },
-                  child: Row(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: Image.network(
-                          v.thumbnail,
-                          width: 80,
-                          height: 45,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) =>
-                              const SizedBox(width: 80, height: 45),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            c.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.small,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              v.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.small.copyWith(
-                                fontWeight: FontWeight.w600,
+                      ],
+                    ),
+                  ),
+                section(_loading ? 'VIDEOS · searching…' : 'VIDEOS'),
+                if (!_loading && _videos.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 2, 10, 10),
+                    child: Text(
+                      'No videos match yet.',
+                      style: theme.textTheme.muted,
+                    ),
+                  ),
+                for (final v in _videos)
+                  Tappable(
+                    radius: 8,
+                    padding: const EdgeInsets.all(6),
+                    onTap: () {
+                      _close();
+                      chat.play(v);
+                    },
+                    child: Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Image.network(
+                            v.thumbnail,
+                            width: 80,
+                            height: 45,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) =>
+                                const SizedBox(width: 80, height: 45),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                v.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.small.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                            ),
-                            Text(
-                              v.channel,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.muted.copyWith(
-                                fontSize: 12,
+                              Text(
+                                v.channel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.muted.copyWith(
+                                  fontSize: 12,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
-    ),
       child: ShadInput(
         controller: _text,
         focusNode: _focus,

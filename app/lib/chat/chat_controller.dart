@@ -92,20 +92,20 @@ class SeriesKey {
 /// Episodes for TV series and episodic anime; cached per series and season.
 final seriesEpisodesProvider =
     FutureProvider.family<SeriesEpisodes?, SeriesKey>((ref, key) async {
-  ref.keepAlive();
-  try {
-    final seasonParam = key.season != null ? '?season=${key.season}' : '';
-    final data = await ref
-        .read(apiProvider)
-        .get('/videos/${key.mediaId}/episodes$seasonParam');
-    if (data is! Map) return null;
-    return SeriesEpisodes.fromJson(Map<String, dynamic>.from(data));
-  } on ApiException {
-    return null;
-  } catch (_) {
-    return null;
-  }
-});
+      ref.keepAlive();
+      try {
+        final seasonParam = key.season != null ? '?season=${key.season}' : '';
+        final data = await ref
+            .read(apiProvider)
+            .get('/videos/${key.mediaId}/episodes$seasonParam');
+        if (data is! Map) return null;
+        return SeriesEpisodes.fromJson(Map<String, dynamic>.from(data));
+      } on ApiException {
+        return null;
+      } catch (_) {
+        return null;
+      }
+    });
 
 /// The currently selected season per series ID (defaults to season 1).
 class SelectedSeasonController extends Notifier<int> {
@@ -116,8 +116,8 @@ class SelectedSeasonController extends Notifier<int> {
 
 final selectedSeasonProvider =
     NotifierProvider.family<SelectedSeasonController, int, String>(
-  (_) => SelectedSeasonController(),
-);
+      (_) => SelectedSeasonController(),
+    );
 
 /// Rail view mode when viewing a TV series: Episodes or Recommended.
 enum RailTab { episodes, recommended }
@@ -128,12 +128,14 @@ class RailTabController extends Notifier<RailTab> {
   void select(RailTab t) => state = t;
 }
 
-final railTabProvider =
-    NotifierProvider<RailTabController, RailTab>(RailTabController.new);
+final railTabProvider = NotifierProvider<RailTabController, RailTab>(
+  RailTabController.new,
+);
 
 /// Verified healthy stream providers from the backend pipeline.
-final verifiedProvidersProvider =
-    FutureProvider<List<StreamProviderInfo>>((ref) async {
+final verifiedProvidersProvider = FutureProvider<List<StreamProviderInfo>>((
+  ref,
+) async {
   try {
     final data = await ref.read(apiProvider).get('/videos/providers');
     if (data is! List) return const [];
@@ -161,8 +163,6 @@ final verifiedProvidersProvider =
     ];
   }
 });
-
-
 
 /// Where manual collapse toggles are kept between app runs (OTTAI-18).
 abstract class CollapseStore {

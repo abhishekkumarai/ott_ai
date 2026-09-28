@@ -298,32 +298,35 @@ void main() {
       expect(v.title, 'Breaking Bad - S1E1: Pilot');
     });
 
-    test('StreamProviderInfo JSON parsing and verifiedProvidersProvider', () async {
-      final info = StreamProviderInfo.fromJson({
-        'id': 'vidy',
-        'name': 'Vidy Multi-Stream',
-        'category': 'movies_tv',
-        'base_url': 'https://vidy.st',
-        'search_type': 'tmdb',
-        'status': 'healthy',
-        'embed_allowed': true,
-        'latency_ms': 750,
-      });
-      expect(info.id, 'vidy');
-      expect(info.name, 'Vidy Multi-Stream');
-      expect(info.category, 'movies_tv');
-      expect(info.embedAllowed, isTrue);
+    test(
+      'StreamProviderInfo JSON parsing and verifiedProvidersProvider',
+      () async {
+        final info = StreamProviderInfo.fromJson({
+          'id': 'vidy',
+          'name': 'Vidy Multi-Stream',
+          'category': 'movies_tv',
+          'base_url': 'https://vidy.st',
+          'search_type': 'tmdb',
+          'status': 'healthy',
+          'embed_allowed': true,
+          'latency_ms': 750,
+        });
+        expect(info.id, 'vidy');
+        expect(info.name, 'Vidy Multi-Stream');
+        expect(info.category, 'movies_tv');
+        expect(info.embedAllowed, isTrue);
 
-      final c = ProviderContainer(
-        overrides: [apiProvider.overrideWithValue(FakeApi())],
-      );
-      addTearDown(c.dispose);
+        final c = ProviderContainer(
+          overrides: [apiProvider.overrideWithValue(FakeApi())],
+        );
+        addTearDown(c.dispose);
 
-      final providers = await c.read(verifiedProvidersProvider.future);
-      expect(providers.length, 2);
-      expect(providers.first.id, 'youtube');
-      expect(providers.last.id, 'vidy');
-    });
+        final providers = await c.read(verifiedProvidersProvider.future);
+        expect(providers.length, 2);
+        expect(providers.first.id, 'youtube');
+        expect(providers.last.id, 'vidy');
+      },
+    );
   });
 
   group('PlayerHandle', () {
@@ -455,21 +458,27 @@ void main() {
       expect(s.messages.length, 1);
     });
 
-    test('activeSource defaults to youtube, setSource switches it and sends with chat', () async {
-      final chat = c.read(chatProvider.notifier);
-      expect(c.read(chatProvider).activeSource, 'youtube');
-      chat.setSource('vidy');
-      expect(c.read(chatProvider).activeSource, 'vidy');
-      api.onChat = (b) => {
-        'conversation_id': 'c1',
-        'reply': 'Vidy results',
-        'videos': [_video('vidy:movie:315162', 'Puss in Boots')],
-        'source': 'vidy',
-      };
-      await chat.send('puss in boots');
-      expect(api.sent.last['source'], 'vidy');
-      expect(c.read(chatProvider).messages.last.videos.first.youtubeId, 'vidy:movie:315162');
-    });
+    test(
+      'activeSource defaults to youtube, setSource switches it and sends with chat',
+      () async {
+        final chat = c.read(chatProvider.notifier);
+        expect(c.read(chatProvider).activeSource, 'youtube');
+        chat.setSource('vidy');
+        expect(c.read(chatProvider).activeSource, 'vidy');
+        api.onChat = (b) => {
+          'conversation_id': 'c1',
+          'reply': 'Vidy results',
+          'videos': [_video('vidy:movie:315162', 'Puss in Boots')],
+          'source': 'vidy',
+        };
+        await chat.send('puss in boots');
+        expect(api.sent.last['source'], 'vidy');
+        expect(
+          c.read(chatProvider).messages.last.videos.first.youtubeId,
+          'vidy:movie:315162',
+        );
+      },
+    );
   });
 
   group('responsive', () {
@@ -602,11 +611,7 @@ void main() {
           container: c,
           child: const ShadApp(
             home: Scaffold(
-              body: SizedBox(
-                width: 380,
-                height: 800,
-                child: RecommendedRail(),
-              ),
+              body: SizedBox(width: 380, height: 800, child: RecommendedRail()),
             ),
           ),
         ),
@@ -636,9 +641,7 @@ void main() {
     (tester) async {
       final api = FakeApi();
       final c = ProviderContainer(
-        overrides: [
-          apiProvider.overrideWithValue(api),
-        ],
+        overrides: [apiProvider.overrideWithValue(api)],
       );
       addTearDown(c.dispose);
 
@@ -649,11 +652,7 @@ void main() {
             home: Scaffold(
               body: Align(
                 alignment: Alignment.topCenter,
-                child: SizedBox(
-                  width: 500,
-                  height: 50,
-                  child: GlobalSearch(),
-                ),
+                child: SizedBox(width: 500, height: 50, child: GlobalSearch()),
               ),
             ),
           ),
@@ -680,4 +679,3 @@ void main() {
     },
   );
 }
-

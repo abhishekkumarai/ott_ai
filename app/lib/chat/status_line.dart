@@ -7,7 +7,7 @@ import '../widgets/tappable.dart';
 import 'chat_controller.dart';
 import 'models.dart';
 
-/// Under the composer (OTTAI-27): the model answering in this chat (click to
+/// Inside the composer, below the input (OTTAI-27): the model answering in this chat (click to
 /// switch), how full the next request's context is, and the tokens used so far.
 class ChatStatusLine extends ConsumerWidget {
   const ChatStatusLine({super.key});
@@ -19,12 +19,11 @@ class ChatStatusLine extends ConsumerWidget {
       chatProvider.select((s) => s.usage?.trimmed ?? false),
     );
     return Wrap(
-      alignment: WrapAlignment.center,
+      alignment: WrapAlignment.start,
       crossAxisAlignment: WrapCrossAlignment.center,
       spacing: 14,
       runSpacing: 2,
       children: [
-        const _SourcePicker(),
         if (aiOn) const _ModelPicker() else _mono(context, 'no LLM · keywords'),
         if (aiOn) const _ContextMeter(),
         const _TokensUsed(),
@@ -298,14 +297,16 @@ const mediaSourceOptions = [
   ),
 ];
 
-class _SourcePicker extends ConsumerStatefulWidget {
-  const _SourcePicker();
+/// The video streaming source for new searches (YouTube, Vidy, …). Lives in
+/// the page header, so its menu opens downward.
+class SourcePicker extends ConsumerStatefulWidget {
+  const SourcePicker({super.key});
 
   @override
-  ConsumerState<_SourcePicker> createState() => _SourcePickerState();
+  ConsumerState<SourcePicker> createState() => _SourcePickerState();
 }
 
-class _SourcePickerState extends ConsumerState<_SourcePicker> {
+class _SourcePickerState extends ConsumerState<SourcePicker> {
   final _popover = ShadPopoverController();
 
   @override
@@ -418,9 +419,9 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
       controller: _popover,
       padding: const EdgeInsets.all(6),
       anchor: const ShadAnchor(
-        childAlignment: Alignment.bottomCenter,
-        overlayAlignment: Alignment.topCenter,
-        offset: Offset(0, -6),
+        childAlignment: Alignment.topRight,
+        overlayAlignment: Alignment.bottomRight,
+        offset: Offset(0, 6),
       ),
       popover: (context) => SizedBox(
         width: 260,
@@ -448,7 +449,11 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
                             ),
                           ),
                           const SizedBox(width: 4),
-                          _mono(context, 'verified', color: const Color(0xFF10B981)),
+                          _mono(
+                            context,
+                            'verified',
+                            color: const Color(0xFF10B981),
+                          ),
                         ],
                       ),
                     ],
@@ -458,7 +463,10 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
                   Tappable(
                     radius: 8,
                     selected: opt.id == active,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 7,
+                    ),
                     semanticLabel: 'Select ${opt.label}',
                     onTap: () {
                       _popover.hide();
@@ -489,7 +497,11 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
                                   Expanded(
                                     child: Text(
                                       opt.label,
-                                      style: mono(context, size: 12, color: cs.foreground),
+                                      style: mono(
+                                        context,
+                                        size: 12,
+                                        color: cs.foreground,
+                                      ),
                                     ),
                                   ),
                                   if (opt.isVerified)
@@ -506,7 +518,9 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
                               ),
                               Text(
                                 opt.subtitle,
-                                style: theme.textTheme.muted.copyWith(fontSize: 10),
+                                style: theme.textTheme.muted.copyWith(
+                                  fontSize: 10,
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -556,4 +570,3 @@ class _SourcePickerState extends ConsumerState<_SourcePicker> {
     );
   }
 }
-

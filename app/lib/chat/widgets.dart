@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../settings/preferences.dart';
-import '../shell/shortcuts.dart';
 import '../theme.dart';
 import '../voice/voice.dart';
 import '../widgets/tappable.dart';
@@ -336,10 +335,14 @@ class Composer extends ConsumerStatefulWidget {
     this.autofocus = false,
     this.focusNode,
     this.playerKeys = false,
+    this.footer,
   });
   final String hint;
   final bool autofocus;
   final FocusNode? focusNode;
+
+  /// Shown inside the box, under the input (the chat's model/context/tokens).
+  final Widget? footer;
 
   /// While a video plays: ← / → seek and Esc stops when the box is empty.
   final bool playerKeys;
@@ -419,7 +422,7 @@ class _ComposerState extends ConsumerState<Composer> {
       decoration: BoxDecoration(
         color: cs.card,
         border: Border.all(color: voice.listening ? coral : cs.border),
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(widget.footer == null ? 28 : 22),
         boxShadow: const [
           BoxShadow(
             color: Color(0x14000000),
@@ -428,121 +431,118 @@ class _ComposerState extends ConsumerState<Composer> {
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 5, 6, 5),
-        child: Row(
-          // Buttons stay on the last line as long text wraps and the box grows.
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Expanded(
-              child: voice.listening
-                  ? Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      child: Text(
-                        voice.partial.isEmpty ? 'Listening…' : voice.partial,
-                        style: theme.textTheme.p.copyWith(
-                          color: cs.mutedForeground,
-                          fontSize: 15,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    )
-                  : ShadInput(
-                      controller: _text,
-                      focusNode: _focus,
-                      autofocus: widget.autofocus,
-                      placeholder: Text(
-                        widget.hint,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      decoration: const ShadDecoration(
-                        border: ShadBorder.none,
-                        focusedBorder: ShadBorder.none,
-                        secondaryFocusedBorder: ShadBorder.none,
-                      ),
-                      // Wrap long input instead of scrolling it sideways out of
-                      // view; Enter still sends (action isn't `newline`).
-                      minLines: 1,
-                      maxLines: 4,
-                      keyboardType: TextInputType.text,
-                      maxLength: 500,
-                      maxLengthEnforcement: MaxLengthEnforcement.enforced,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: _send,
-                    ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _input(context, theme, cs, sending, voice, voiceOn),
+          if (widget.footer != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+              child: widget.footer,
             ),
-            if (voice.available && voiceOn)
-              ShadTooltip(
-                builder: (_) =>
-                    Text(voice.listening ? 'Stop listening' : 'Speak'),
-                child: ShadIconButton.outline(
-                  width: 38,
-                  height: 38,
-                  decoration: ShadDecoration(
-                    border: ShadBorder.all(
-                      radius: BorderRadius.circular(999),
-                      color: voice.listening ? coral : cs.border,
-                    ),
-                  ),
-                  icon: Icon(
-                    voice.listening ? LucideIcons.micOff : LucideIcons.mic,
-                    size: 17,
-                  ),
-                  onPressed: _toggleMic,
-                  foregroundColor: voice.listening ? coral : null,
-                ),
-              ),
-            const SizedBox(width: 6),
-            ShadTooltip(
-              builder: (_) => const Text('Send  Enter'),
-              child: ShadIconButton(
-                width: 38,
-                height: 38,
-                decoration: ShadDecoration(
-                  border: ShadBorder.all(radius: BorderRadius.circular(999)),
-                ),
-                icon: sending
-                    ? SizedBox.square(
-                        dimension: 14,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: cs.primaryForeground,
-                        ),
-                      )
-                    : const Icon(LucideIcons.arrowUp, size: 18),
-                onPressed: sending ? null : _send,
-              ),
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }
-}
 
-/// Mono hint line under the composer.
-class ShortcutHint extends StatelessWidget {
-  const ShortcutHint({super.key, required this.playing});
-  final bool playing;
-
-  @override
-  Widget build(BuildContext context) {
-    final narrow = MediaQuery.sizeOf(context).width < mobileBreakpoint;
-    final text = narrow
-        ? 'Say “forward 25 sec”, “loop this part” or “stop”'
-        : playing
-        ? 'Space pause · M mute · ←/→ seek (empty box) · Esc stop · ${shortcutLabel('K')} search · ? shortcuts'
-        : '${shortcutLabel('K')} search · ${shortcutLabel('N')} new session · ? shortcuts · videos play from YouTube';
-    return Text(
-      text,
-      textAlign: TextAlign.center,
-      maxLines: 2,
-      style: mono(context, size: 11),
-    );
-  }
+  Widget _input(
+    BuildContext context,
+    ShadThemeData theme,
+    ShadColorScheme cs,
+    bool sending,
+    VoiceState voice,
+    bool voiceOn,
+  ) => Padding(
+    padding: const EdgeInsets.fromLTRB(10, 5, 6, 5),
+    child: Row(
+      // Buttons stay on the last line as long text wraps and the box grows.
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: voice.listening
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  child: Text(
+                    voice.partial.isEmpty ? 'Listening…' : voice.partial,
+                    style: theme.textTheme.p.copyWith(
+                      color: cs.mutedForeground,
+                      fontSize: 15,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                )
+              : ShadInput(
+                  controller: _text,
+                  focusNode: _focus,
+                  autofocus: widget.autofocus,
+                  placeholder: Text(
+                    widget.hint,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  decoration: const ShadDecoration(
+                    border: ShadBorder.none,
+                    focusedBorder: ShadBorder.none,
+                    secondaryFocusedBorder: ShadBorder.none,
+                  ),
+                  // Wrap long input instead of scrolling it sideways out of
+                  // view; Enter still sends (action isn't `newline`).
+                  minLines: 1,
+                  maxLines: 4,
+                  keyboardType: TextInputType.text,
+                  maxLength: 500,
+                  maxLengthEnforcement: MaxLengthEnforcement.enforced,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: _send,
+                ),
+        ),
+        if (voice.available && voiceOn)
+          ShadTooltip(
+            builder: (_) => Text(voice.listening ? 'Stop listening' : 'Speak'),
+            child: ShadIconButton.outline(
+              width: 38,
+              height: 38,
+              decoration: ShadDecoration(
+                border: ShadBorder.all(
+                  radius: BorderRadius.circular(999),
+                  color: voice.listening ? coral : cs.border,
+                ),
+              ),
+              icon: Icon(
+                voice.listening ? LucideIcons.micOff : LucideIcons.mic,
+                size: 17,
+              ),
+              onPressed: _toggleMic,
+              foregroundColor: voice.listening ? coral : null,
+            ),
+          ),
+        const SizedBox(width: 6),
+        ShadTooltip(
+          builder: (_) => const Text('Send  Enter'),
+          child: ShadIconButton(
+            width: 38,
+            height: 38,
+            decoration: ShadDecoration(
+              border: ShadBorder.all(radius: BorderRadius.circular(999)),
+            ),
+            icon: sending
+                ? SizedBox.square(
+                    dimension: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: cs.primaryForeground,
+                    ),
+                  )
+                : const Icon(LucideIcons.arrowUp, size: 18),
+            onPressed: sending ? null : _send,
+          ),
+        ),
+      ],
+    ),
+  );
 }

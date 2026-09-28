@@ -442,7 +442,9 @@ class SeriesRailHeader extends ConsumerWidget {
                   'Earlier: $earlier',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: ShadTheme.of(context).textTheme.muted.copyWith(fontSize: 12),
+                  style: ShadTheme.of(
+                    context,
+                  ).textTheme.muted.copyWith(fontSize: 12),
                 ),
               ),
               ShadButton.link(
@@ -479,7 +481,9 @@ class _RailTabButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = ShadTheme.of(context);
-    final color = selected ? coralOn(context) : theme.colorScheme.mutedForeground;
+    final color = selected
+        ? coralOn(context)
+        : theme.colorScheme.mutedForeground;
     return Tappable(
       onTap: onTap,
       radius: 8,
@@ -491,7 +495,9 @@ class _RailTabButton extends StatelessWidget {
               ? coralOn(context).withValues(alpha: .12)
               : Colors.transparent,
           border: Border.all(
-            color: selected ? coralOn(context).withValues(alpha: .6) : theme.colorScheme.border,
+            color: selected
+                ? coralOn(context).withValues(alpha: .6)
+                : theme.colorScheme.border,
             width: 1,
           ),
           borderRadius: BorderRadius.circular(8),
@@ -562,7 +568,9 @@ class EpisodeList extends ConsumerWidget {
 
     return episodesAsync.when(
       loading: () => Padding(
-        padding: padding.add(const EdgeInsets.symmetric(horizontal: 8, vertical: 12)),
+        padding: padding.add(
+          const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        ),
         child: Row(
           children: [
             const SizedBox(
@@ -571,12 +579,17 @@ class EpisodeList extends ConsumerWidget {
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
             const SizedBox(width: 8),
-            Text('Loading episodes…', style: theme.textTheme.muted.copyWith(fontSize: 13)),
+            Text(
+              'Loading episodes…',
+              style: theme.textTheme.muted.copyWith(fontSize: 13),
+            ),
           ],
         ),
       ),
       error: (err, _) => Padding(
-        padding: padding.add(const EdgeInsets.symmetric(horizontal: 8, vertical: 12)),
+        padding: padding.add(
+          const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        ),
         child: Text(
           'Could not load episodes.',
           style: theme.textTheme.muted.copyWith(fontSize: 13),
@@ -585,7 +598,9 @@ class EpisodeList extends ConsumerWidget {
       data: (data) {
         if (data == null || data.episodes.isEmpty) {
           return Padding(
-            padding: padding.add(const EdgeInsets.symmetric(horizontal: 8, vertical: 12)),
+            padding: padding.add(
+              const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+            ),
             child: Text(
               'No episodes found.',
               style: theme.textTheme.muted.copyWith(fontSize: 13),
@@ -635,8 +650,8 @@ class EpisodeList extends ConsumerWidget {
                       onTap: playing
                           ? null
                           : () => ref
-                              .read(chatProvider.notifier)
-                              .play(ep.toVideo(seriesName: data.seriesTitle)),
+                                .read(chatProvider.notifier)
+                                .play(ep.toVideo(seriesName: data.seriesTitle)),
                     ),
                   );
                 },
@@ -709,8 +724,7 @@ class _EpisodeRowState extends State<EpisodeRow> {
                   : 'S${ep.seasonNumber} E${ep.episodeNumber}',
               color: coralOn(context),
             ),
-            if (ep.durationS > 0)
-              _Tag(formatTime(ep.durationS)),
+            if (ep.durationS > 0) _Tag(formatTime(ep.durationS)),
             if (widget.playing)
               _Tag('PLAYING', color: coralOn(context))
             else if (widget.watched)
@@ -739,7 +753,11 @@ class _EpisodeRowState extends State<EpisodeRow> {
                 children: [
                   SizedBox(
                     width: 130,
-                    child: Thumbnail(video: epVideo, radius: 8, showMatch: false),
+                    child: Thumbnail(
+                      video: epVideo,
+                      radius: 8,
+                      showMatch: false,
+                    ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(child: meta),
@@ -818,4 +836,3 @@ class _SeasonChip extends StatelessWidget {
     );
   }
 }
-

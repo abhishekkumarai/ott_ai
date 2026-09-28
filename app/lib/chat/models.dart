@@ -323,8 +323,8 @@ class Episode {
     title: (seriesName != null && seriesName.isNotEmpty)
         ? '$seriesName - S${seasonNumber}E$episodeNumber: $title'
         : (seriesTitle.isNotEmpty)
-            ? '$seriesTitle - S${seasonNumber}E$episodeNumber: $title'
-            : 'S${seasonNumber}E$episodeNumber: $title',
+        ? '$seriesTitle - S${seasonNumber}E$episodeNumber: $title'
+        : 'S${seasonNumber}E$episodeNumber: $title',
     channel: (seriesName != null && seriesName.isNotEmpty)
         ? seriesName
         : (seriesTitle.isNotEmpty ? seriesTitle : 'TV Series'),
@@ -439,5 +439,3 @@ class StreamProviderInfo {
         latencyMs: (j['latency_ms'] as num?)?.toInt() ?? 0,
       );
 }
-
-

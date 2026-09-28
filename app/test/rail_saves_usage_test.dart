@@ -10,6 +10,7 @@ import 'package:ott_ai/chat/models.dart';
 import 'package:ott_ai/chat/reply.dart';
 import 'package:ott_ai/chat/status_line.dart';
 import 'package:ott_ai/library/saved.dart';
+import 'package:ott_ai/shell/top_bar.dart';
 import 'package:ott_ai/theme.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
@@ -392,6 +393,19 @@ void main() {
       // above 75%: amber
       final meter = tester.widget<ShadProgress>(find.byType(ShadProgress));
       expect(meter.color, warning);
+    });
+
+    testWidgets('video source picker is in the header, not the composer', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await pump(tester, const TopBar());
+      expect(find.byType(SourcePicker), findsOneWidget);
+      expect(find.text('YouTube'), findsOneWidget);
+      await pump(tester, const ChatStatusLine());
+      expect(find.byType(SourcePicker), findsNothing);
     });
   });
 }

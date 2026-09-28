@@ -366,7 +366,8 @@ class _ChatBodyState extends ConsumerState<_ChatBody> {
                   autofocus: true,
                   focusNode: _composerFocus,
                   hint: switch (s.activeSource) {
-                    'vidy_movie' => 'Ask for any movie or say “play Inception”…',
+                    'vidy_movie' =>
+                      'Ask for any movie or say “play Inception”…',
                     'vidy_tv' => 'Ask for a TV series or say “tv 1396 1 1”…',
                     'vidy_anime' => 'Ask for an anime or say “anime 21 1”…',
                     'vidy' =>
@@ -375,11 +376,8 @@ class _ChatBodyState extends ConsumerState<_ChatBody> {
                   },
                   // ← / → seek and Esc stops from the chat too.
                   playerKeys: s.playerOpen,
+                  footer: const ChatStatusLine(),
                 ),
-                const SizedBox(height: 6),
-                const ChatStatusLine(),
-                const SizedBox(height: 2),
-                ShortcutHint(playing: s.playerOpen),
               ],
             ),
           ),
@@ -494,9 +492,9 @@ class _EmptyState extends ConsumerWidget {
               Text(
                 isVidy
                     ? 'Ask for any movie, show, or anime. Stream instantly right '
-                        'here with interactive controls.'
+                          'here with interactive controls.'
                     : 'Ask about any topic. I’ll find free videos with their key '
-                        'moments; pick one to play it right here.',
+                          'moments; pick one to play it right here.',
                 style: theme.textTheme.muted.copyWith(fontSize: 15),
               ),
               const SizedBox(height: 20),
