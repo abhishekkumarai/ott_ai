@@ -8,6 +8,8 @@ services:
       OTT_ENV: prod
       OTT_DATABASE_URL: ${OTT_DOCKER_DATABASE_URL:?run backend/scripts/make_env.py}
       OTT_OLLAMA_URL: ${OTT_DOCKER_OLLAMA_URL:-http://host.docker.internal:11434}
+      OTT_TMDB_API_KEY: ${OTT_TMDB_API_KEY:-${TMDB_API_KEY:-}}
+      OTT_TMDB_READ_TOKEN: ${OTT_TMDB_READ_TOKEN:-${TMDB_READ_ACCESS_TOKEN:-}}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     read_only: true

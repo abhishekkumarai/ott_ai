@@ -1,10 +1,9 @@
 import logging
 import re
-from typing import Any
 
 from app.videos.provider_pipeline import StreamProviderConfig, provider_registry
 from app.videos.router import VideoOut
-from app.videos.vidy import search_anilist, search_curated_vidy, search_tmdb
+from app.videos.vidy import search_anilist, search_curated_vidy, search_tmdb, tmdb_kind
 
 log = logging.getLogger(__name__)
 
@@ -94,95 +93,21 @@ async def search_provider(q: str, provider_id: str = "vidy") -> list[VideoOut]:
             )
         ]
 
-    # 2. Search based on provider search_type
-    results: list[VideoOut] = []
-
-    if provider.search_type == "anilist" or provider.category == "anime" or "anime" in clean_q.lower():
+    # 2. Title search: AniList for anime sources, TMDB for movie/TV sources, and the
+    # built-in titles only when they genuinely match. Nothing found -> nothing returned.
+    is_anime = provider.search_type == "anilist" or provider.category == "anime"
+    if is_anime or "anime" in clean_q.lower():
         anime_items = await search_anilist(clean_q)
-        if anime_items:
-            # Rebrand provider ID on items
-            results = [
-                VideoOut(
-                    youtube_id=v.youtube_id.replace("vidy:", f"{pid}:"),
-                    title=v.title,
-                    channel=v.channel,
-                    duration_s=v.duration_s,
-                    topic=v.topic,
-                    thumbnail=v.thumbnail,
-                    match=v.match,
-                    provider=pid,
-                    media_type=v.media_type,
-                    season=v.season,
-                    episode=v.episode,
-                )
-                for v in anime_items
-            ]
-            return results
+        if anime_items or is_anime:
+            return _rebrand(anime_items, pid)
 
-    # TMDB or fallback
-    from app.config import get_settings
-    settings = get_settings()
-    tmdb_key = getattr(settings, "tmdb_api_key", "")
-    if tmdb_key:
-        tmdb_items = await search_tmdb(clean_q, tmdb_key)
-        if tmdb_items:
-            results = [
-                VideoOut(
-                    youtube_id=v.youtube_id.replace("vidy:", f"{pid}:"),
-                    title=v.title,
-                    channel=v.channel,
-                    duration_s=v.duration_s,
-                    topic=v.topic,
-                    thumbnail=v.thumbnail,
-                    match=v.match,
-                    provider=pid,
-                    media_type=v.media_type,
-                    season=v.season,
-                    episode=v.episode,
-                )
-                for v in tmdb_items
-            ]
-            return results
+    items = await search_tmdb(clean_q, tmdb_kind(provider_id))
+    return _rebrand(items or search_curated_vidy(clean_q, source=provider_id), pid)
 
-    # Fallback to curated library
-    curated = search_curated_vidy(clean_q, source=provider_id)
-    if curated:
-        results = [
-            VideoOut(
-                youtube_id=v.youtube_id.replace("vidy:", f"{pid}:"),
-                title=v.title,
-                channel=v.channel,
-                duration_s=v.duration_s,
-                topic=v.topic,
-                thumbnail=v.thumbnail,
-                match=v.match,
-                provider=pid,
-                media_type=v.media_type,
-                season=v.season,
-                episode=v.episode,
-            )
-            for v in curated
-        ]
-        return results
 
-    # Fallback to AniList
-    dynamic_anime = await search_anilist(clean_q)
-    if dynamic_anime:
-        return [
-            VideoOut(
-                youtube_id=v.youtube_id.replace("vidy:", f"{pid}:"),
-                title=v.title,
-                channel=v.channel,
-                duration_s=v.duration_s,
-                topic=v.topic,
-                thumbnail=v.thumbnail,
-                match=v.match,
-                provider=pid,
-                media_type=v.media_type,
-                season=v.season,
-                episode=v.episode,
-            )
-            for v in dynamic_anime
-        ]
-
-    return []
+def _rebrand(items: list[VideoOut], pid: str) -> list[VideoOut]:
+    """Re-label results (built as vidy:...) for the chosen provider."""
+    return [
+        v.model_copy(update={"youtube_id": v.youtube_id.replace("vidy:", f"{pid}:", 1), "provider": pid})
+        for v in items
+    ]

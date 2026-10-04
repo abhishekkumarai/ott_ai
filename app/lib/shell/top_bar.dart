@@ -104,8 +104,8 @@ class TopBar extends ConsumerWidget {
   }
 }
 
-/// Search box with a results dropdown: matching chats (local) and catalog videos
-/// (`/videos/search`, debounced).
+/// Search box with a results dropdown: matching chats (local) and videos from the
+/// selected source (`/videos/search`, debounced).
 class GlobalSearch extends ConsumerStatefulWidget {
   const GlobalSearch({super.key});
 
@@ -157,7 +157,11 @@ class _GlobalSearchState extends ConsumerState<GlobalSearch> {
     final q = _query;
     setState(() => _loading = true);
     try {
-      final data = await ref.read(apiProvider).get('/videos/search', {'q': q});
+      final source = ref.read(chatProvider).activeSource;
+      final data = await ref.read(apiProvider).get('/videos/search', {
+        'q': q,
+        'source': source,
+      });
       if (!mounted || q != _query) return;
       setState(() {
         _videos = [

@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
-from pydantic import field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DB_NAME = "ott_ai_db"
@@ -35,6 +35,15 @@ class Settings(BaseSettings):
     access_token_minutes: int = 15
     refresh_token_days: int = 14
     youtube_api_key: str = ""
+    # TMDB title search for the movie/TV aggregators. The prefixed names win; the
+    # plain TMDB_* names are accepted because that is how the machine already has them.
+    tmdb_api_key: str = Field(
+        default="", validation_alias=AliasChoices("OTT_TMDB_API_KEY", "TMDB_API_KEY")
+    )
+    tmdb_read_token: str = Field(
+        default="",
+        validation_alias=AliasChoices("OTT_TMDB_READ_TOKEN", "TMDB_READ_ACCESS_TOKEN"),
+    )
     ollama_url: str = "http://localhost:11434"
     allowed_models: list[str] = ["llama3.2:3b", "qwen3.5:4b", "llama3.1:latest"]
     default_model: str = "llama3.2:3b"
@@ -55,6 +64,10 @@ class Settings(BaseSettings):
         if len(v) < 32:
             raise ValueError("OTT_JWT_SECRET must be at least 32 characters")
         return v
+
+    @property
+    def tmdb_enabled(self) -> bool:
+        return bool(self.tmdb_api_key or self.tmdb_read_token)
 
     @property
     def is_prod(self) -> bool:

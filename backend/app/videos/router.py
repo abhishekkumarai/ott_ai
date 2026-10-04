@@ -114,8 +114,21 @@ async def providers(request: Request, user: CurrentUser):
 @router.get("/search", response_model=list[VideoOut])
 @limiter.limit("30/minute")
 async def search(
-    request: Request, db: DB, user: CurrentUser, q: Annotated[str, Query(min_length=1, max_length=200)]
+    request: Request,
+    db: DB,
+    user: CurrentUser,
+    q: Annotated[str, Query(min_length=1, max_length=200)],
+    source: Annotated[str, Query(max_length=40, pattern=r"^[a-z0-9_]+$")] = "youtube",
 ):
+    """Search the selected source: the video catalog for YouTube, otherwise that
+    provider's title search (TMDB / AniList)."""
+    if source not in ("youtube", "catalog", "chat"):
+        from app.videos.multi_provider import search_provider
+        from app.videos.provider_pipeline import provider_registry
+
+        if provider_registry.get_provider(source.split("_")[0]) is None:
+            raise HTTPException(422, "Unknown source")
+        return (await search_provider(q, provider_id=source))[:8]
     videos, _ = await service.find_videos(db, q)
     return [VideoOut.of(v) for v in videos]
 

@@ -17,6 +17,10 @@ _p = urlsplit(_base)
 os.environ["OTT_DATABASE_URL"] = urlunsplit((_p.scheme, _p.netloc, "/ott_ai_db_test", "", ""))
 os.environ["OTT_EXPECTED_DB_NAME"] = "ott_ai_db_test"
 os.environ["OTT_YOUTUBE_API_KEY"] = "test-key"
+# Never hit the real TMDB from tests (the machine has TMDB_* set); tests that need
+# it set a key on the settings object and fake the HTTP calls.
+os.environ["OTT_TMDB_API_KEY"] = ""
+os.environ["OTT_TMDB_READ_TOKEN"] = ""
 os.environ["OTT_ENV"] = "test"
 # Fixture catalogs use their own topics; tests that need the recommendation
 # topics (LLMs, ML, data structures) set them explicitly.

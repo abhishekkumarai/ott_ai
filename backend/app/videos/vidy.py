@@ -2,12 +2,13 @@
 
 Supports:
 - AniList GraphQL API (free, open, no auth) for Anime.
-- TMDB API (if OTT_TMDB_API_KEY is configured) + Curated Entertainment Catalog for Movies & TV.
+- TMDB API (if a TMDB key or read token is configured) + Curated Entertainment Catalog for Movies & TV.
 - Direct ID / route syntax (e.g. "movie 315162", "tv 1396 1 1", "anime 21 1").
 """
 
 import logging
 import re
+import time
 from typing import Literal
 
 import httpx
@@ -248,65 +249,189 @@ async def search_anilist(query: str) -> list[VideoOut]:
         return []
 
 
-async def search_tmdb(query: str, api_key: str) -> list[VideoOut]:
-    """Search movies and TV shows via TMDB API if key is provided."""
-    if not api_key:
-        return []
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(
-                "https://api.themoviedb.org/3/search/multi",
-                params={"api_key": api_key, "query": query, "include_adult": "false"},
-            )
-            if resp.status_code != 200:
-                return []
-            results = resp.json().get("results", [])
-            out = []
-            for r in results:
-                mtype = r.get("media_type")
-                if mtype not in ("movie", "tv"):
-                    continue
-                mid = r.get("id")
-                title = r.get("title") or r.get("name") or "Title"
-                poster_path = r.get("poster_path")
-                poster = (
-                    f"https://image.tmdb.org/t/p/w500{poster_path}"
-                    if poster_path
-                    else "https://vidy.st/favicon.svg"
-                )
-                vote = r.get("vote_average", 0)
-                match_pct = int(min(99, max(50, vote * 10))) if vote else None
-                if mtype == "movie":
-                    vid = f"vidy:movie:{mid}"
-                    channel = "TMDB Movie"
-                else:
-                    vid = f"vidy:tv:{mid}/1/1"
-                    channel = "TMDB Series • S1 E1"
+TMDB_BASE = "https://api.themoviedb.org/3"
+TMDB_IMG = "https://image.tmdb.org/t/p/w500"
+TMDB_CACHE_TTL_S = 600
+TMDB_CACHE_MAX = 256
+# Some networks reset TLS handshakes to TMDB intermittently; these are cheap to retry.
+TMDB_ATTEMPTS = 3
+# Words people wrap around a title that are not part of it ("watch dune 2021 movie").
+TITLE_FILLER = {
+    "watch", "stream", "streaming", "play", "movie", "movies", "film", "films", "show",
+    "shows", "series", "tv", "season", "episode", "ep", "full", "online", "free", "hd",
+    "the", "a", "an", "of", "please", "me", "find", "search", "for", "want", "to", "i",
+}
+# Trimmed from the ends of a query; articles stay since they belong to titles.
+EDGE_FILLER = TITLE_FILLER - {"the", "a", "an"}
+YEAR_RE = re.compile(r"\b(19[0-9]{2}|20[0-9]{2})\b")
+TmdbKind = Literal["multi", "movie", "tv"]
 
-                out.append(
-                    VideoOut(
-                        youtube_id=vid,
-                        title=title,
-                        channel=channel,
-                        duration_s=7200 if mtype == "movie" else 3000,
-                        topic=f"{mtype.title()} • TMDB",
-                        thumbnail=poster,
-                        match=match_pct,
-                        provider="vidy",
-                        media_type=mtype,
-                        season=1 if mtype == "tv" else None,
-                        episode=1 if mtype == "tv" else None,
-                    )
-                )
-            return out
-    except Exception as e:
-        log.warning("TMDB API search failed for '%s': %s", query, e)
+_tmdb_cache: dict[tuple, tuple[float, list[VideoOut]]] = {}
+
+
+def _words(s: str) -> list[str]:
+    return re.findall(r"\w+", s.lower())
+
+
+def clean_title_query(query: str) -> tuple[str, int | None]:
+    """Split a free-text request into (title text, year). Leading and trailing filler
+    words are dropped ("watch dune 2021 movie" -> "dune", 2021); inner words are kept
+    so "the office" or "a quiet place" survive."""
+    q = query.strip()
+    m = YEAR_RE.search(q)
+    year = int(m.group(1)) if m else None
+    if m:
+        q = (q[: m.start()] + " " + q[m.end():]).strip()
+    words = q.split()
+    while len(words) > 1 and words[0].lower().strip(".,!?") in EDGE_FILLER:
+        words.pop(0)
+    while len(words) > 1 and words[-1].lower().strip(".,!?") in EDGE_FILLER:
+        words.pop()
+    cleaned = " ".join(words).strip(" .,!?") or query.strip()
+    return cleaned[:120], year
+
+
+def title_similarity(query: str, title: str) -> float:
+    """0..1: how well a title matches the words asked for, ignoring filler words."""
+    qw = [w for w in _words(query) if w not in TITLE_FILLER] or _words(query)
+    tw = [w for w in _words(title) if w not in TITLE_FILLER] or _words(title)
+    if not qw or not tw:
+        return 0.0
+    if qw == tw:
+        return 1.0
+    shared = len(set(qw) & set(tw))
+    if not shared:
+        return 0.0
+    recall = shared / len(set(qw))
+    precision = shared / len(set(tw))
+    return round(0.95 * (0.75 * recall + 0.25 * precision), 3)
+
+
+def _tmdb_auth() -> tuple[dict[str, str], dict[str, str]] | None:
+    """(headers, params) for TMDB: the v4 read token if set, else the v3 key."""
+    s = get_settings()
+    if s.tmdb_read_token:
+        return {"Authorization": f"Bearer {s.tmdb_read_token}"}, {}
+    if s.tmdb_api_key:
+        return {}, {"api_key": s.tmdb_api_key}
+    return None
+
+
+async def tmdb_get(client: httpx.AsyncClient, path: str, params: dict | None = None) -> dict | None:
+    """GET a TMDB v3 path. None when TMDB is not configured or the call fails."""
+    auth = _tmdb_auth()
+    if auth is None:
+        return None
+    headers, base = auth
+    resp = None
+    for attempt in range(TMDB_ATTEMPTS):
+        try:
+            resp = await client.get(f"{TMDB_BASE}{path}", params={**base, **(params or {})}, headers=headers)
+            break
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            if attempt == TMDB_ATTEMPTS - 1:
+                log.warning("TMDB %s failed after %d tries: %s", path, TMDB_ATTEMPTS, type(e).__name__)
+                return None
+        except httpx.HTTPError as e:
+            log.warning("TMDB %s failed: %s", path, type(e).__name__)
+            return None
+    if resp is None:
+        return None
+    if resp.status_code != 200:
+        log.warning("TMDB %s returned HTTP %s", path, resp.status_code)
+        return None
+    try:
+        return resp.json()
+    except ValueError:
+        log.warning("TMDB %s returned invalid JSON", path)
+        return None
+
+
+def _release_year(r: dict) -> int | None:
+    d = r.get("release_date") or r.get("first_air_date") or ""
+    return int(d[:4]) if len(d) >= 4 and d[:4].isdigit() else None
+
+
+async def search_tmdb(query: str, kind: TmdbKind = "multi", limit: int = 12) -> list[VideoOut]:
+    """Title search on TMDB, ranked by how well each title matches what was asked.
+
+    `kind` narrows to movies or TV. A year in the query filters movies/TV (retrying
+    without it if that finds nothing) and breaks ties for multi-search."""
+    if _tmdb_auth() is None:
         return []
+    title, year = clean_title_query(query)
+    if not title:
+        return []
+    key = (kind, title.lower(), year)
+    now = time.monotonic()
+    hit = _tmdb_cache.get(key)
+    if hit and now - hit[0] < TMDB_CACHE_TTL_S:
+        return list(hit[1])
+
+    params: dict[str, str | int] = {"query": title, "include_adult": "false"}
+    year_param = {"movie": "year", "tv": "first_air_date_year"}.get(kind)
+    if year and year_param:
+        params[year_param] = year
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        data = await tmdb_get(client, f"/search/{kind}", params)
+        if data is None:
+            return []
+        results = data.get("results") or []
+        if not results and year_param and year_param in params:
+            params.pop(year_param)
+            results = (await tmdb_get(client, f"/search/{kind}", params) or {}).get("results") or []
+
+    ranked: list[tuple[float, bool, int, VideoOut]] = []
+    for order, r in enumerate(results):
+        if not isinstance(r, dict):
+            continue
+        mtype = r.get("media_type") or kind
+        mid = r.get("id")
+        name = r.get("title") or r.get("name") or ""
+        if mtype not in ("movie", "tv") or not isinstance(mid, int) or not name:
+            continue
+        original = r.get("original_title") or r.get("original_name") or ""
+        score = max(title_similarity(title, name), title_similarity(title, original))
+        ry = _release_year(r)
+        poster = f"{TMDB_IMG}{r['poster_path']}" if r.get("poster_path") else "https://vidy.st/favicon.svg"
+        label = "Movie" if mtype == "movie" else "Series"
+        ranked.append(
+            (
+                score,
+                bool(year) and ry != year,
+                order,
+                VideoOut(
+                    youtube_id=f"vidy:movie:{mid}" if mtype == "movie" else f"vidy:tv:{mid}/1/1",
+                    title=name,
+                    channel="TMDB Movie" if mtype == "movie" else "TMDB Series • S1 E1",
+                    duration_s=7200 if mtype == "movie" else 3000,
+                    topic=f"{label} • {ry}" if ry else label,
+                    thumbnail=poster,
+                    match=int(round(50 + 49 * score)),
+                    provider="vidy",
+                    media_type=mtype,
+                    season=1 if mtype == "tv" else None,
+                    episode=1 if mtype == "tv" else None,
+                ),
+            )
+        )
+    # Best title match first, then the asked-for year, then TMDB's own
+    # popularity-aware order.
+    ranked.sort(key=lambda x: (-x[0], x[1], x[2]))
+    out = [v for *_, v in ranked[:limit]]
+
+    if len(_tmdb_cache) >= TMDB_CACHE_MAX:
+        _tmdb_cache.pop(next(iter(_tmdb_cache)))
+    _tmdb_cache[key] = (now, out)
+    return list(out)
 
 
 def search_curated_vidy(query: str, source: str = "vidy") -> list[VideoOut]:
-    """Search built-in curated titles using token overlap."""
-    tokens = set(re.findall(r"\w+", query.lower()))
+    """Offline fallback: the built-in titles whose *title* matches the query.
+
+    Generic words ("movie", "the", "series") never count, so a vague query returns
+    nothing rather than the same few defaults."""
+    title_q, _ = clean_title_query(query)
     is_anime_source = source in ("vidy_anime", "anime")
     is_tv_source = source in ("vidy_tv", "tv")
     is_movie_source = source in ("vidy_movie", "movie")
@@ -319,18 +444,11 @@ def search_curated_vidy(query: str, source: str = "vidy") -> list[VideoOut]:
             continue
         if is_movie_source and item["media_type"] != "movie":
             continue
-
-        item_tokens = set(re.findall(r"\w+", f"{item['title']} {item['topic']} {item['channel']}".lower()))
-        overlap = len(tokens & item_tokens)
-        score = overlap / max(1, len(tokens))
-        if overlap > 0:
+        score = title_similarity(title_q, item["title"])
+        if score >= 0.5:
             scored.append((item, score))
 
     scored.sort(key=lambda x: x[1], reverse=True)
-    if not scored:
-        # Fallback to top curated titles
-        scored = [(item, 0.9) for item in CURATED_VIDY_TITLES[:5]]
-
     return [
         VideoOut(
             youtube_id=item["id"],
@@ -339,7 +457,7 @@ def search_curated_vidy(query: str, source: str = "vidy") -> list[VideoOut]:
             duration_s=item["duration_s"],
             topic=item["topic"],
             thumbnail=item["thumbnail"],
-            match=int(round(min(99, max(70, score * 100)))),
+            match=int(round(50 + 49 * score)),
             provider=item["provider"],
             media_type=item["media_type"],
             season=item.get("season"),
@@ -402,25 +520,24 @@ async def search_vidy(query: str, source: str = "vidy") -> list[VideoOut]:
         if anime_results:
             return anime_results
 
-    # If TMDB API key available, search TMDB
-    settings = get_settings()
-    tmdb_key = getattr(settings, "tmdb_api_key", "")
-    if tmdb_key:
-        tmdb_results = await search_tmdb(q, tmdb_key)
-        if tmdb_results:
-            return tmdb_results
+    tmdb_results = await search_tmdb(q, tmdb_kind(source))
+    if tmdb_results:
+        return tmdb_results
 
-    # Fall back to curated library + AniList
-    curated = search_curated_vidy(q, source)
-    if curated and any(t in q.lower() for t in ("movie", "puss", "inception", "interstellar", "breaking", "stranger", "batman", "dune", "matrix", "arcane", "last")):
-        return curated
+    # TMDB off or empty: only built-in titles that really match. (AniList is for
+    # anime requests above; here it would return unrelated anime.)
+    return search_curated_vidy(q, source)
 
-    # Try AniList as dynamic fallback
-    anime_dynamic = await search_anilist(q)
-    if anime_dynamic:
-        return anime_dynamic
 
-    return curated
+def tmdb_kind(source: str) -> TmdbKind:
+    """Which TMDB search a source wants: "rive_movie" / "movie" are movie-only,
+    "vidy_tv" / "tv" TV-only, anything else both."""
+    suffix = source.rsplit("_", 1)[-1]
+    if suffix == "movie":
+        return "movie"
+    if suffix == "tv":
+        return "tv"
+    return "multi"
 
 
 CURATED_TV_EPISODES: dict[str, dict] = {
@@ -614,18 +731,12 @@ async def get_series_episodes(media_id: str, season: int | None = None) -> Serie
                 episodes=episodes,
             )
 
-        # Check TMDB API if key is present
-        settings = get_settings()
-        tmdb_key = getattr(settings, "tmdb_api_key", "")
-        if tmdb_key:
+        # Real seasons/episodes from TMDB when it is configured (ids are numeric)
+        if series_id.isdigit() and get_settings().tmdb_enabled:
             try:
                 async with httpx.AsyncClient(timeout=5.0) as client:
-                    tv_resp = await client.get(
-                        f"https://api.themoviedb.org/3/tv/{series_id}",
-                        params={"api_key": tmdb_key},
-                    )
-                    if tv_resp.status_code == 200:
-                        tv_data = tv_resp.json()
+                    tv_data = await tmdb_get(client, f"/tv/{series_id}")
+                    if tv_data is not None:
                         title = tv_data.get("name") or f"Series {series_id}"
                         raw_seasons = tv_data.get("seasons", [])
                         seasons = [
@@ -637,12 +748,8 @@ async def get_series_episodes(media_id: str, season: int | None = None) -> Serie
                             for s in raw_seasons
                             if s.get("season_number", 0) > 0
                         ]
-                        s_resp = await client.get(
-                            f"https://api.themoviedb.org/3/tv/{series_id}/season/{current_season}",
-                            params={"api_key": tmdb_key},
-                        )
-                        if s_resp.status_code == 200:
-                            s_data = s_resp.json()
+                        s_data = await tmdb_get(client, f"/tv/{series_id}/season/{current_season}")
+                        if s_data is not None:
                             episodes = [
                                 EpisodeOut(
                                     youtube_id=f"vidy:tv:{series_id}/{current_season}/{ep.get('episode_number', 1)}",
@@ -653,10 +760,10 @@ async def get_series_episodes(media_id: str, season: int | None = None) -> Serie
                                     season_number=current_season,
                                     duration_s=(ep.get("runtime") or 45) * 60,
                                     thumbnail=(
-                                        f"https://image.tmdb.org/t/p/w500{ep['still_path']}"
+                                        f"{TMDB_IMG}{ep['still_path']}"
                                         if ep.get("still_path")
                                         else (
-                                            f"https://image.tmdb.org/t/p/w500{tv_data['poster_path']}"
+                                            f"{TMDB_IMG}{tv_data['poster_path']}"
                                             if tv_data.get("poster_path")
                                             else "https://vidy.st/favicon.svg"
                                         )

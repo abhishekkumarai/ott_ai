@@ -26,6 +26,7 @@ MAX_BODY = 16 * 1024
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("database: %s", urlsplit(settings.db_url).path.lstrip("/"))
+    log.info("tmdb title search: %s", "on" if settings.tmdb_enabled else "off")
     yield
     await ollama.close()
     await engine.dispose()
