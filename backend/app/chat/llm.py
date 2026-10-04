@@ -4,26 +4,28 @@ LLM output is untrusted: it is length-limited, used only as a search string and 
 plain text in the chat, never as HTML or as instructions to anything else.
 """
 
+import re
 from dataclasses import dataclass, field
 
 from app import ollama
 
 SYSTEM = (
-    "You are the assistant inside a video chat app. The user asks about a topic; you "
-    "extract a short YouTube search query (2-6 words) for it and write a one or two "
-    "sentence friendly reply introducing the videos you are about to show. Do not list "
-    "videos or URLs yourself. If the message is small talk with no topic, set topic to an "
-    "empty string and just reply briefly, suggesting they ask for a video on a topic. "
-    "In highlights, copy up to three short key phrases (2-6 words) exactly as they "
-    "appear in your reply."
+    "You are the assistant inside a video chat app. The user asks about a topic or enters keywords; you "
+    "extract the core search topic into 'topic' (preserve concise keywords like 'python', 'docker', 'sourdough bread' as-is, "
+    "do not over-expand with filler words) and write a one or two sentence friendly reply introducing the videos "
+    "you are about to show. Do not list videos or URLs yourself. Only if the message is pure small talk like "
+    "'hi', 'hello', 'how are you' with no subject matter, set topic to an empty string and reply briefly. "
+    "In highlights, copy up to three short key phrases (2-6 words) exactly as they appear in your reply."
 )
 
 SYSTEM_VIDY = (
     "You are the assistant inside an entertainment video chat app powered by Vidy. The user "
     "asks about a movie, TV show, or anime; you extract the clean title (and optional year, season, "
-    "or episode number) as the search query and write a one or two sentence friendly reply introducing "
-    "the title you are about to stream. Do not list videos or URLs yourself. If the message is small talk "
-    "with no title, set topic to an empty string and suggest they ask for a movie, TV show, or anime. "
+    "or episode number) into the 'topic' field. Even if the user inputs just a single title word like "
+    "'Inception', 'Avatar', 'Interstellar', or 'Naruto', extract that title into 'topic'. "
+    "Write a one or two sentence friendly reply introducing the title you are about to stream. "
+    "Do not list videos or URLs yourself. Only if the message is pure small talk like 'hi', 'hello' with "
+    "no movie/show/anime name or genre, set topic to an empty string and suggest they name a title. "
     "In highlights, copy up to three short key phrases (2-6 words) exactly as they appear in your reply."
 )
 
@@ -39,6 +41,17 @@ SCHEMA = {
 
 
 # Only this many recent messages are sent with each request (the app says so).
+# Messages that are chat, not a search request, even when they are short.
+SMALL_TALK = {
+    "hi", "hello", "hey", "hiya", "yo", "sup", "greetings", "help", "thanks", "thank",
+    "thx", "ty", "ok", "okay", "k", "cool", "nice", "great", "awesome", "lol", "haha",
+    "yes", "yeah", "yep", "no", "nope", "nah", "bye", "goodbye", "morning", "evening",
+    "night", "good", "how", "are", "you", "u", "what's", "whats", "up", "there", "all",
+    "everyone", "much", "so", "very", "please", "sure", "fine", "hmm", "wow", "again",
+    "who", "is", "this", "it", "doing", "going",
+}
+KEYWORD_MAX_WORDS = 6
+
 HISTORY_WINDOW = 6
 NUM_PREDICT = 200
 # Keep the prompt plus the reply under this share of the context window; beyond it,
@@ -96,6 +109,17 @@ def next_context(history: list[dict], ctx: int) -> tuple[int, bool]:
     return estimate_tokens([{"role": "system", "content": SYSTEM}, *kept]), trimmed
 
 
+def _looks_like_keywords(message: str) -> bool:
+    """True for a short keyword query ("docker", "sourdough bread"); False for small
+    talk ("thanks!", "hi there", "how are you") or long sentences."""
+    words = re.findall(r"[\w']+", message.lower())
+    if not words or len(words) > KEYWORD_MAX_WORDS:
+        return False
+    if len(words) == 1 and len(words[0]) < 2:
+        return False
+    return any(w not in SMALL_TALK for w in words)
+
+
 async def understand(
     message: str, model: str, history: list[dict], ctx: int, source: str = "youtube"
 ) -> Understanding:
@@ -109,8 +133,12 @@ async def understand(
         )
     data = res.data
     reply = _clean(data.get("reply"), 600) or "Here's what I found."
+    topic = _clean(data.get("topic"), 120)
+    if not topic and _looks_like_keywords(message):
+        # Small models sometimes drop a bare keyword ("react", "Inception"); use it.
+        topic = message.strip()[:120]
     return Understanding(
-        topic=_clean(data.get("topic"), 120),
+        topic=topic,
         reply=reply,
         used_llm=True,
         highlights=_highlights(data.get("highlights"), reply),

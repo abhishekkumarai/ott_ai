@@ -19,8 +19,9 @@ from app.videos import youtube
 log = logging.getLogger("ott_ai.search")
 
 RRF_K = 60
-# nomic-embed-text cosine similarity above which a catalog hit counts as relevant
-SEMANTIC_MIN = 0.62
+# Cosine similarity a catalog hit needs when no text matches it (text matches always
+# count); lower values let nomic-embed "hallucinate" loosely related videos.
+SEMANTIC_PURE_MIN = 0.74
 CACHE_TTL = timedelta(days=7)
 MIN_DURATION_S = 60
 SAME_TOPIC_BONUS = 0.06
@@ -44,6 +45,11 @@ def query_text(q: str) -> str:
     return f"search_query: {q}"
 
 
+def _like_escape(s: str) -> str:
+    """Make % and _ in user text literal inside a LIKE pattern."""
+    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def normalize_query(q: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^\w\s-]", " ", q.lower())).strip()[:200]
 
@@ -52,6 +58,8 @@ async def search_catalog(db: AsyncSession, query: str, limit: int = 6) -> list[H
     query = query.strip()[:200]
     if not query:
         return []
+
+    # 1. Full-text search (websearch_to_tsquery for natural English phrase / AND logic)
     tsq = func.websearch_to_tsquery("english", query)
     fts_rows = (
         await db.execute(
@@ -62,6 +70,35 @@ async def search_catalog(db: AsyncSession, query: str, limit: int = 6) -> list[H
         )
     ).all()
 
+    # 2. Title Substring / Trigram matching for concise keywords (utilizing ix_videos_title_trgm)
+    norm_q = normalize_query(query)
+    title_rows = []
+    if norm_q and len(norm_q) >= 2:
+        title_rows = (
+            await db.execute(
+                select(Video.id)
+                .where(Video.title.ilike(f"%{_like_escape(norm_q)}%", escape="\\"), Video.embeddable.is_(True))
+                .limit(20)
+            )
+        ).scalars().all()
+
+    # 3. If multi-word query had 0 FTS hits, attempt token OR full-text query
+    words = [w for w in re.findall(r"\w+", norm_q) if len(w) >= 3]
+    or_fts_rows = []
+    if not fts_rows and len(words) > 1:
+        # websearch_to_tsquery never raises on user text (to_tsquery can, and a failed
+        # statement would abort the whole request's transaction).
+        or_tsq = func.websearch_to_tsquery("english", " or ".join(words))
+        or_fts_rows = (
+            await db.execute(
+                select(Video.id, func.ts_rank_cd(Video.tsv, or_tsq).label("r"))
+                .where(Video.tsv.op("@@")(or_tsq), Video.embeddable.is_(True))
+                .order_by(literal_column("r").desc())
+                .limit(20)
+            )
+        ).all()
+
+    # 4. Dense semantic vector retrieval (pgvector cosine distance)
     vec_rows = []
     qvec = await ollama.embed_one(query_text(query))
     if qvec is not None:
@@ -81,12 +118,22 @@ async def search_catalog(db: AsyncSession, query: str, limit: int = 6) -> list[H
     for rank, (vid, _) in enumerate(fts_rows):
         scores[vid] = scores.get(vid, 0) + 1 / (RRF_K + rank)
         text_ids.add(vid)
+    for rank, (vid, _) in enumerate(or_fts_rows):
+        scores[vid] = scores.get(vid, 0) + 0.8 / (RRF_K + rank)
+        text_ids.add(vid)
+    for rank, vid in enumerate(title_rows):
+        scores[vid] = scores.get(vid, 0) + 1.2 / (RRF_K + rank)
+        text_ids.add(vid)
     for rank, (vid, d) in enumerate(vec_rows):
         scores[vid] = scores.get(vid, 0) + 1 / (RRF_K + rank)
         sims[vid] = 1 - float(d)
 
-    # Only keep results with some real evidence of relevance
-    relevant = [v for v in scores if v in text_ids or sims.get(v, 0) >= SEMANTIC_MIN]
+    # Only keep results with real evidence of relevance: text matches or high semantic similarity
+    relevant = [
+        v
+        for v in scores
+        if v in text_ids or sims.get(v, 0.0) >= SEMANTIC_PURE_MIN
+    ]
     relevant.sort(key=lambda v: scores[v], reverse=True)
     relevant = relevant[:limit]
     if not relevant:
@@ -150,16 +197,17 @@ async def youtube_fallback(db: AsyncSession, query: str, limit: int = 6) -> list
         if not i["live"] and i["duration_s"] >= MIN_DURATION_S
     ]
     videos = await upsert_videos(db, items, source="youtube", topic=key[:100])
-    stmt = insert(YoutubeQueryCache).values(
-        query=key, youtube_ids=[v.youtube_id for v in videos], fetched_at=func.now()
-    )
-    await db.execute(
-        stmt.on_conflict_do_update(
-            index_elements=["query"],
-            set_={"youtube_ids": stmt.excluded.youtube_ids, "fetched_at": func.now()},
+    if videos:
+        stmt = insert(YoutubeQueryCache).values(
+            query=key, youtube_ids=[v.youtube_id for v in videos], fetched_at=func.now()
         )
-    )
-    await db.commit()
+        await db.execute(
+            stmt.on_conflict_do_update(
+                index_elements=["query"],
+                set_={"youtube_ids": stmt.excluded.youtube_ids, "fetched_at": func.now()},
+            )
+        )
+        await db.commit()
     return videos[:limit]
 
 
@@ -175,7 +223,7 @@ async def find_videos_scored(
 ) -> tuple[list[Video], str, dict[str, int]]:
     """Like [find_videos], plus a match % per catalog hit (YouTube fallback has none)."""
     hits = await search_catalog(db, query, limit)
-    strong = [h for h in hits if h.text_match or h.similarity >= SEMANTIC_MIN]
+    strong = [h for h in hits if h.text_match or h.similarity >= SEMANTIC_PURE_MIN]
     if strong:
         scores = {
             h.video.youtube_id: pct

@@ -43,9 +43,17 @@ async def search(query: str, max_results: int = 8) -> list[dict]:
                 },
             )
             r.raise_for_status()
-            ids = [i["id"]["videoId"] for i in r.json().get("items", [])]
+            items = r.json().get("items", [])
+            ids = [
+                vid
+                for i in items
+                if isinstance(i, dict)
+                and (vid := i.get("id", {}).get("videoId") if isinstance(i.get("id"), dict) else None)
+            ]
         except (httpx.HTTPError, KeyError, ValueError) as e:
             log.warning("youtube search failed: %s", type(e).__name__)
+            return []
+        if not ids:
             return []
     return await details(ids)
 
@@ -65,6 +73,7 @@ async def details(ids: list[str]) -> list[dict]:
                     "key": key,
                 },
             )
+            r.raise_for_status()
             r.raise_for_status()
             items = r.json().get("items", [])
         except (httpx.HTTPError, ValueError) as e:
