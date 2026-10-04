@@ -229,3 +229,86 @@ async def test_demo_accounts_expire_and_are_rate_limited(client):
     for _ in range(3):
         await client.post("/api/auth/demo")
     assert (await client.post("/api/auth/demo")).status_code == 429
+
+
+# ---------- ollama health ----------
+
+async def test_ollama_health_endpoints(client, monkeypatch):
+    tok = await register(client)
+    h = auth(tok["access_token"])
+
+    async def mock_unreachable():
+        return {
+            "status": "unreachable",
+            "ok": False,
+            "version": None,
+            "models": [],
+            "available_models": [],
+            "installed_count": 0,
+            "embed_model": "nomic-embed-text:latest",
+            "embed_available": False,
+            "ollama_url": "http://localhost:11434",
+            "latency_ms": None,
+            "message": "Could not connect to Ollama at http://localhost:11434.",
+        }
+
+    monkeypatch.setattr("app.ollama.check_health", mock_unreachable)
+
+    r1 = await client.get("/api/ollama/health", headers=h)
+    assert r1.status_code == 200
+    assert r1.json()["status"] == "unreachable"
+    assert r1.json()["ok"] is False
+
+    # Ollama details are only for signed-in users; there is no public variant.
+    assert (await client.get("/api/ollama/health")).status_code == 401
+    assert (await client.get("/api/health/ollama")).status_code == 404
+
+    async def mock_healthy():
+        return {
+            "status": "healthy",
+            "ok": True,
+            "version": "0.3.14",
+            "models": ["llama3.2:3b", "nomic-embed-text:latest"],
+            "available_models": ["llama3.2:3b"],
+            "installed_count": 2,
+            "embed_model": "nomic-embed-text:latest",
+            "embed_available": True,
+            "ollama_url": "http://localhost:11434",
+            "latency_ms": 12,
+            "message": "Ollama is running normally with 2 model(s) installed.",
+        }
+
+    monkeypatch.setattr("app.ollama.check_health", mock_healthy)
+    r3 = await client.get("/api/ollama/health", headers=h)
+    assert r3.status_code == 200
+    data = r3.json()
+    assert data["status"] == "healthy"
+    assert data["ok"] is True
+    assert data["version"] == "0.3.14"
+    assert data["available_models"] == ["llama3.2:3b"]
+
+
+async def test_ollama_check_health_function(monkeypatch):
+    from app import ollama
+    import httpx
+
+    class MockClient:
+        async def get(self, path, timeout=3):
+            if path == "/api/version":
+                return httpx.Response(200, json={"version": "0.3.14"}, request=httpx.Request("GET", path))
+            if path == "/api/tags":
+                return httpx.Response(
+                    200,
+                    json={"models": [{"name": "llama3.2:3b"}, {"name": "nomic-embed-text:latest"}]},
+                    request=httpx.Request("GET", path),
+                )
+            raise httpx.ConnectError("Failed")
+
+    monkeypatch.setattr(ollama, "client", lambda: MockClient())
+    res = await ollama.check_health()
+    assert res["status"] == "healthy"
+    assert res["ok"] is True
+    assert res["version"] == "0.3.14"
+    assert "llama3.2:3b" in res["available_models"]
+    assert res["embed_available"] is True
+

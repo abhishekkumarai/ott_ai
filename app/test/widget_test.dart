@@ -46,6 +46,7 @@ class FakeApi extends ApiClient {
   Future<dynamic> get(String path, [Map<String, dynamic>? query]) async {
     gets.add(query == null ? path : '$path?${query.values.join(',')}');
     if (path == '/models') return models;
+    if (path == '/ollama/health') return ollamaHealth;
     if (path == '/me/preferences') return prefs;
     if (path.endsWith('/recommendations')) {
       return [_video('rrrrrrrrrrr', 'Related')];
@@ -138,6 +139,19 @@ class FakeApi extends ApiClient {
     'default': 'llama3.2:3b',
     'base_context': 180,
     'history_window': 6,
+  };
+  Map<String, dynamic> ollamaHealth = {
+    'status': 'healthy',
+    'ok': true,
+    'version': '0.3.14',
+    'models': ['llama3.2:3b', 'qwen3.5:4b', 'nomic-embed-text:latest'],
+    'available_models': ['llama3.2:3b', 'qwen3.5:4b'],
+    'installed_count': 3,
+    'embed_model': 'nomic-embed-text:latest',
+    'embed_available': true,
+    'ollama_url': 'http://localhost:11434',
+    'latency_ms': 14,
+    'message': 'Ollama is running normally with 3 model(s) installed.',
   };
   Map<String, dynamic> Function(String? model) usage = (model) => {
     'prompt_tokens': 0,

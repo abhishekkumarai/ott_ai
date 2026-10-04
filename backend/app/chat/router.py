@@ -105,6 +105,20 @@ class ModelsOut(BaseModel):
     base_context: int = 0
 
 
+class OllamaHealthOut(BaseModel):
+    status: Literal["healthy", "degraded", "unreachable"]
+    ok: bool
+    version: str | None = None
+    models: list[str] = []
+    available_models: list[str] = []
+    installed_count: int = 0
+    embed_model: str
+    embed_available: bool = False
+    ollama_url: str
+    latency_ms: int | None = None
+    message: str
+
+
 def _command_reply(action: str, seconds: float) -> str:
     if action == "seek":
         n = int(abs(seconds)) if float(seconds).is_integer() else abs(seconds)
@@ -191,6 +205,12 @@ async def models(user: CurrentUser):
         default=s.default_model,
         base_context=estimate_tokens([{"role": "system", "content": SYSTEM}]),
     )
+
+
+@router.get("/ollama/health", response_model=OllamaHealthOut)
+@limiter.limit("60/minute")
+async def ollama_health(request: Request, user: CurrentUser):
+    return await ollama.check_health()
 
 
 @router.post("/chat", response_model=ChatOut)

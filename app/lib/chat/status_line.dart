@@ -24,7 +24,7 @@ class ChatStatusLine extends ConsumerWidget {
       spacing: 14,
       runSpacing: 2,
       children: [
-        if (aiOn) const _ModelPicker() else _mono(context, 'no LLM · keywords'),
+        if (aiOn) const ModelSelectDropdown() else _mono(context, 'no LLM · keywords'),
         if (aiOn) const _ContextMeter(),
         const _TokensUsed(),
         if (trimmed) _mono(context, 'older messages trimmed', color: warning),
@@ -43,103 +43,74 @@ Color meterColor(BuildContext context, double share) => share > .9
     ? warning
     : ShadTheme.of(context).colorScheme.mutedForeground;
 
-class _ModelPicker extends ConsumerStatefulWidget {
-  const _ModelPicker();
+/// Dropdown in the chat input to select models (OTTAI-27).
+class ModelSelectDropdown extends ConsumerWidget {
+  const ModelSelectDropdown({super.key});
 
   @override
-  ConsumerState<_ModelPicker> createState() => _ModelPickerState();
-}
-
-class _ModelPickerState extends ConsumerState<_ModelPicker> {
-  final _popover = ShadPopoverController();
-
-  @override
-  void dispose() {
-    _popover.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = ShadTheme.of(context);
     final cs = theme.colorScheme;
     final models = ref.watch(chatProvider.select((s) => s.models));
     final model = ref.watch(chatProvider.select((s) => s.model));
-    return ShadPopover(
-      controller: _popover,
-      padding: const EdgeInsets.all(6),
-      anchor: const ShadAnchor(
-        childAlignment: Alignment.bottomCenter,
-        overlayAlignment: Alignment.topCenter,
-        offset: Offset(0, -6),
-      ),
-      popover: (context) => SizedBox(
-        width: 240,
-        child: Column(
+    if (models.isEmpty) return _mono(context, model ?? 'no models installed');
+
+    final current = models.any((m) => m.name == model)
+        ? model
+        : (models.isNotEmpty ? models.first.name : null);
+
+    return ShadTooltip(
+      builder: (_) => const Text('Switch the model for this chat'),
+      child: ShadSelect<String>(
+        key: ValueKey(current),
+        initialValue: current,
+        minWidth: 150,
+        maxHeight: 280,
+        decoration: ShadDecoration(
+          border: ShadBorder.all(
+            color: cs.border.withValues(alpha: 0.6),
+            radius: BorderRadius.circular(6),
+          ),
+          color: cs.card,
+        ),
+        selectedOptionBuilder: (context, value) => Row(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
-              child: _mono(context, 'MODEL FOR THIS CHAT'),
-            ),
-            for (final m in models)
-              Tappable(
-                radius: 8,
-                selected: m.name == model,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-                semanticLabel: 'Use ${m.name}',
-                onTap: () {
-                  _popover.hide();
-                  if (m.name != model) {
-                    ref.read(chatProvider.notifier).setModel(m.name);
-                  }
-                },
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 20,
-                      child: m.name == model
-                          ? Icon(LucideIcons.check, size: 14, color: coral)
-                          : null,
-                    ),
-                    Expanded(
-                      child: Text(
-                        m.name,
-                        style: mono(context, size: 12, color: cs.foreground),
-                      ),
-                    ),
-                    if (m.context > 0)
-                      _mono(context, '${compactContext(m.context)} ctx'),
-                  ],
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
-              child: Text(
-                'New chats start with the model set in Settings.',
-                style: theme.textTheme.muted.copyWith(fontSize: 12),
-              ),
-            ),
+            Icon(LucideIcons.cpu, size: 12, color: cs.mutedForeground),
+            const SizedBox(width: 4),
+            _mono(context, value),
           ],
         ),
-      ),
-      child: ShadTooltip(
-        builder: (_) => const Text('Switch the model for this chat'),
-        child: ShadButton.ghost(
-          size: ShadButtonSize.sm,
-          height: 24,
-          padding: const EdgeInsets.symmetric(horizontal: 6),
-          gap: 4,
-          onPressed: _popover.toggle,
-          leading: Icon(LucideIcons.cpu, size: 12, color: cs.mutedForeground),
-          trailing: Icon(
-            LucideIcons.chevronDown,
-            size: 12,
-            color: cs.mutedForeground,
+        options: [
+          for (final m in models)
+            ShadOption(
+              value: m.name,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      m.name,
+                      style: mono(context, size: 12, color: cs.foreground),
+                    ),
+                  ),
+                  if (m.context > 0)
+                    _mono(context, '${compactContext(m.context)} ctx'),
+                ],
+              ),
+            ),
+        ],
+        footer: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+          child: Text(
+            'New chats start with the model set in Settings.',
+            style: theme.textTheme.muted.copyWith(fontSize: 12),
           ),
-          child: _mono(context, model ?? '—'),
         ),
+        onChanged: (m) {
+          if (m != null && m != model) {
+            ref.read(chatProvider.notifier).setModel(m);
+          }
+        },
       ),
     );
   }

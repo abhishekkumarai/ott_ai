@@ -239,7 +239,266 @@ class _ModelSection extends ConsumerWidget {
               },
             ),
           ),
+        const _OllamaHealthCheck(),
       ],
+    );
+  }
+}
+
+class OllamaHealthData {
+  const OllamaHealthData({
+    required this.status,
+    required this.ok,
+    this.version,
+    this.models = const [],
+    this.availableModels = const [],
+    this.installedCount = 0,
+    this.embedModel = '',
+    this.embedAvailable = false,
+    this.ollamaUrl = '',
+    this.latencyMs,
+    required this.message,
+  });
+
+  final String status;
+  final bool ok;
+  final String? version;
+  final List<String> models;
+  final List<String> availableModels;
+  final int installedCount;
+  final String embedModel;
+  final bool embedAvailable;
+  final String ollamaUrl;
+  final int? latencyMs;
+  final String message;
+
+  factory OllamaHealthData.fromJson(Map<String, dynamic> j) => OllamaHealthData(
+    status: j['status'] as String? ?? (j['ok'] == true ? 'healthy' : 'unreachable'),
+    ok: j['ok'] == true,
+    version: j['version'] as String?,
+    models: [for (final m in (j['models'] as List? ?? const [])) m.toString()],
+    availableModels: [
+      for (final m in (j['available_models'] as List? ?? const [])) m.toString()
+    ],
+    installedCount: (j['installed_count'] as num?)?.toInt() ?? 0,
+    embedModel: j['embed_model'] as String? ?? '',
+    embedAvailable: j['embed_available'] == true,
+    ollamaUrl: j['ollama_url'] as String? ?? '',
+    latencyMs: (j['latency_ms'] as num?)?.toInt(),
+    message: j['message'] as String? ?? '',
+  );
+}
+
+class _OllamaHealthCheck extends ConsumerStatefulWidget {
+  const _OllamaHealthCheck();
+
+  @override
+  ConsumerState<_OllamaHealthCheck> createState() => _OllamaHealthCheckState();
+}
+
+class _OllamaHealthCheckState extends ConsumerState<_OllamaHealthCheck> {
+  bool _loading = false;
+  OllamaHealthData? _health;
+
+  Future<void> _checkHealth() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+
+    try {
+      final res = await ref.read(apiProvider).get('/ollama/health');
+      if (!mounted) return;
+      final data = OllamaHealthData.fromJson(Map<String, dynamic>.from(res as Map));
+      setState(() {
+        _health = data;
+        _loading = false;
+      });
+
+      if (data.ok) {
+        await ref.read(chatProvider.notifier).loadModels();
+      }
+
+      if (mounted) {
+        if (data.status == 'healthy') {
+          ShadToaster.of(context).show(
+            ShadToast(
+              title: const Text('Ollama is healthy'),
+              description: Text(data.message),
+            ),
+          );
+        } else if (data.status == 'degraded') {
+          ShadToaster.of(context).show(
+            ShadToast(
+              title: const Text('Ollama warning'),
+              description: Text(data.message),
+            ),
+          );
+        } else {
+          ShadToaster.of(context).show(
+            ShadToast.destructive(
+              title: const Text('Ollama unreachable'),
+              description: Text(data.message),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      final fallback = OllamaHealthData(
+        status: 'unreachable',
+        ok: false,
+        message: 'Failed to connect: $e',
+      );
+      setState(() {
+        _health = fallback;
+        _loading = false;
+      });
+      ShadToaster.of(context).show(
+        ShadToast.destructive(
+          title: const Text('Health check failed'),
+          description: Text(fallback.message),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = ShadTheme.of(context);
+    final cs = theme.colorScheme;
+    final h = _health;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _Row(
+            label: 'Ollama health',
+            sublabel: 'Check connectivity to the local Ollama instance.',
+            control: ShadButton.outline(
+              size: ShadButtonSize.sm,
+              onPressed: _loading ? null : _checkHealth,
+              leading: _loading
+                  ? SizedBox.square(
+                      dimension: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: cs.foreground,
+                      ),
+                    )
+                  : const Icon(LucideIcons.activity, size: 14),
+              child: Text(_loading
+                  ? 'Checking…'
+                  : (h == null ? 'Check health' : 'Re-check')),
+            ),
+          ),
+          if (h != null) ...[
+            const SizedBox(height: 8),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: cs.muted.withValues(alpha: 0.35),
+                border: Border.all(
+                  color: _healthColor(context, h.status).withValues(alpha: 0.4),
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        _HealthBadge(health: h),
+                        const SizedBox(width: 8),
+                        if (h.version != null)
+                          Text(
+                            'v${h.version}',
+                            style: mono(context, size: 11, color: cs.mutedForeground),
+                          ),
+                        const Spacer(),
+                        if (h.ollamaUrl.isNotEmpty)
+                          Text(
+                            h.ollamaUrl,
+                            style: mono(context, size: 10, color: cs.mutedForeground),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      h.message,
+                      style: theme.textTheme.small.copyWith(
+                        color: cs.foreground,
+                        fontSize: 12,
+                      ),
+                    ),
+                    if (h.models.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Installed models (${h.installedCount}):',
+                        style: theme.textTheme.muted.copyWith(fontSize: 11),
+                      ),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          for (final m in h.models)
+                            ShadBadge.outline(
+                              child: Text(
+                                m,
+                                style: mono(context, size: 10),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+Color _healthColor(BuildContext context, String status) => switch (status) {
+  'healthy' => success,
+  'degraded' => warning,
+  _ => ShadTheme.of(context).colorScheme.destructive,
+};
+
+class _HealthBadge extends StatelessWidget {
+  const _HealthBadge({required this.health});
+
+  final OllamaHealthData health;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _healthColor(context, health.status);
+    final (icon, label) = switch (health.status) {
+      'healthy' => (
+        LucideIcons.checkCircle2,
+        health.latencyMs != null ? 'Healthy • ${health.latencyMs}ms' : 'Healthy',
+      ),
+      'degraded' => (LucideIcons.alertTriangle, 'Degraded'),
+      _ => (LucideIcons.xCircle, 'Offline / Unreachable'),
+    };
+    return ShadBadge.raw(
+      variant: ShadBadgeVariant.primary,
+      backgroundColor: color.withValues(alpha: 0.14),
+      foregroundColor: color,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(label, style: mono(context, size: 11, color: color)),
+        ],
+      ),
     );
   }
 }

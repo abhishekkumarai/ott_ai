@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from dataclasses import dataclass
 
 import httpx
@@ -53,6 +54,84 @@ async def installed_models() -> set[str]:
         return {m["name"] for m in r.json().get("models", [])}
     except (httpx.HTTPError, KeyError, ValueError):
         return set()
+
+
+async def check_health() -> dict:
+    """Check connectivity to Ollama, retrieve version, latency, and installed models."""
+    s = get_settings()
+    start = time.perf_counter()
+    version: str | None = None
+    try:
+        r_ver = await client().get("/api/version", timeout=3)
+        if r_ver.status_code == 200:
+            version = r_ver.json().get("version")
+    except Exception:
+        version = None
+
+    try:
+        r = await client().get("/api/tags", timeout=3)
+        r.raise_for_status()
+        latency_ms = max(1, int((time.perf_counter() - start) * 1000))
+        raw_models = r.json().get("models", [])
+        installed = [
+            m.get("name", "")
+            for m in raw_models
+            if isinstance(m, dict) and "name" in m and m.get("name")
+        ]
+        installed_set = set(installed)
+
+        available_models = [m for m in s.allowed_models if m in installed_set]
+        embed_prefix = s.embed_model.split(":")[0]
+        embed_available = s.embed_model in installed_set or any(
+            m.startswith(embed_prefix) for m in installed_set
+        )
+
+        status = "healthy"
+        if not available_models:
+            status = "degraded"
+            message = (
+                f"Ollama is running (v{version or '?'}), but no allowed chat models "
+                f"({', '.join(s.allowed_models)}) are installed."
+            )
+        elif not embed_available:
+            status = "degraded"
+            message = (
+                f"Ollama is running with {len(available_models)} chat model(s), but embedding model "
+                f"'{s.embed_model}' is not installed."
+            )
+        else:
+            message = (
+                f"Ollama is running normally (v{version or '?'}) with {len(installed)} model(s) installed."
+            )
+
+        return {
+            "status": status,
+            "ok": True,
+            "version": version,
+            "models": installed,
+            "available_models": available_models,
+            "installed_count": len(installed),
+            "embed_model": s.embed_model,
+            "embed_available": embed_available,
+            "ollama_url": s.ollama_url,
+            "latency_ms": latency_ms,
+            "message": message,
+        }
+    except Exception as e:
+        log.warning("Ollama health check failed: %s", e)
+        return {
+            "status": "unreachable",
+            "ok": False,
+            "version": None,
+            "models": [],
+            "available_models": [],
+            "installed_count": 0,
+            "embed_model": s.embed_model,
+            "embed_available": False,
+            "ollama_url": s.ollama_url,
+            "latency_ms": None,
+            "message": f"Could not connect to Ollama at {s.ollama_url}. Ensure Ollama is running.",
+        }
 
 
 @dataclass
